@@ -13,11 +13,12 @@ export function requireAuth(req, res, next) {
 
     // ✅ Expose BOTH ids, plus role
     // sub = university number (public id), uid = UUID (DB id)
-    req.user = {
-      uid: payload.uid,                    // DB UUID (use for relations)
-      universityNumber: payload.sub,       // public id (use in URLs)
+     req.user = {
+      id: payload.uid,                    // DB UUID (use for Prisma and existing routes)
+      uid: payload.uid,                   // DB UUID (optional, same as id)
+      universityNumber: payload.sub,      // public university number
       role: payload.role
-    };
+    }
 
     // (Optional) temporary backward-compat if any existing code used req.user.id
     // req.user.id = payload.sub; // ← uncomment only if you need it

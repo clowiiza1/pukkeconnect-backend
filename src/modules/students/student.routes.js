@@ -127,7 +127,7 @@ const upsertProfileSchema = z.object({
  *       - in: path
  *         name: userId
  *         required: true
- *         schema: { type: string, format: uuid }
+ *         schema: { type: string}
  *     responses:
  *       200:
  *         description: OK
@@ -153,7 +153,7 @@ const upsertProfileSchema = z.object({
  *       - in: path
  *         name: userId
  *         required: true
- *         schema: { type: string, format: uuid }
+ *         schema: { type: string }
  *     requestBody:
  *       required: true
  *       content:
@@ -215,18 +215,18 @@ router.get('/me/profile', requireAuth, async (req, res, next) => {
   }
 });
 
-// GET /api/students/:userId/profile (admin only)
-router.get('/:userId/profile', requireAuth, async (req, res, next) => {
+// GET /api/students/:universityNumber/profile (admin only)
+router.get('/:universityNumber/profile', requireAuth, async (req, res, next) => {
   try {
     if (req.user.role !== 'university_admin' && req.user.role !== 'society_admin') {
       return res.status(403).json({ message: 'Forbidden' });
     }
     const profile = await prisma.student_profile.findUnique({
-      where: { student_id: req.params.userId },
+      where: { university_number: req.params.universityNumber },
     });
     if (!profile) return res.status(404).json({ message: 'Profile not found' });
     res.json({
-      studentId: profile.student_id,
+      studentId: profile.university_number,
       studyField: profile.study_field ?? null,
       interests: profile.interests ?? [],
       availability: profile.availability ?? null,
@@ -238,18 +238,16 @@ router.get('/:userId/profile', requireAuth, async (req, res, next) => {
   }
 });
 
-
-//Api for student to update entire profile
-// api/students/me/profile
+// PUT /api/students/me/profile (student)
 router.put('/me/profile', requireAuth, async (req, res, next) => {
   try {
     const body = upsertProfileSchema.parse(req.body);
-    const studentId = req.user.id;
+    const universityNumber = req.user.universityNumber; // use university number from JWT
 
     const saved = await prisma.student_profile.upsert({
-      where: { student_id: studentId },
+      where: { university_number: universityNumber },
       create: {
-        student_id: studentId,
+        university_number: universityNumber,
         study_field: body.studyField ?? null,
         interests: body.interests ?? [],
         availability: body.availability ?? null,
@@ -263,7 +261,7 @@ router.put('/me/profile', requireAuth, async (req, res, next) => {
     });
 
     res.status(200).json({
-      studentId: saved.student_id,
+      studentId: saved.university_number,
       studyField: saved.study_field ?? null,
       interests: saved.interests ?? [],
       availability: saved.availability ?? null,
@@ -278,20 +276,19 @@ router.put('/me/profile', requireAuth, async (req, res, next) => {
   }
 });
 
-//Api to partially update student profile
-// api/students/me/profile
+// PATCH /api/students/me/profile (student)
 router.patch('/me/profile', requireAuth, async (req, res, next) => {
   try {
     const partial = upsertProfileSchema.partial().parse(req.body);
-    const studentId = req.user.id;
+    const universityNumber = req.user.universityNumber;
 
     const existing = await prisma.student_profile.findUnique({
-      where: { student_id: studentId },
+      where: { university_number: universityNumber },
     });
     if (!existing) return res.status(404).json({ message: 'Profile not found' });
 
     const saved = await prisma.student_profile.update({
-      where: { student_id: studentId },
+      where: { university_number: universityNumber },
       data: {
         study_field: partial.studyField ?? existing.study_field,
         interests: partial.interests ?? existing.interests,
@@ -301,7 +298,7 @@ router.patch('/me/profile', requireAuth, async (req, res, next) => {
     });
 
     res.json({
-      studentId: saved.student_id,
+      studentId: saved.university_number,
       studyField: saved.study_field ?? null,
       interests: saved.interests ?? [],
       availability: saved.availability ?? null,
