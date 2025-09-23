@@ -1,0 +1,301 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = "postgresql://clowii:cmpg@localhost:5432/pukkeconnect"
+}
+
+model announcement {
+  announcement_id BigInt   @id @default(autoincrement())
+  title           String   @db.VarChar(200)
+  description     String?
+  created_by      String   @db.Uuid
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  app_user        app_user @relation(fields: [created_by], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model app_user {
+  user_id                                    String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  role                                       user_role
+  email                                      String           @unique @db.Citext
+  phone_number                               String?          @db.VarChar(20)
+  first_name                                 String           @db.VarChar(100)
+  last_name                                  String           @db.VarChar(100)
+  created_at                                 DateTime         @default(now()) @db.Timestamptz(6)
+  updated_at                                 DateTime         @default(now()) @db.Timestamptz(6)
+  university_number                          String           @unique(map: "uq_app_user_university_number") @db.VarChar(10)
+  major                                      String?
+  campus                                     campus_type?
+  password_hash                              String?
+  announcement                               announcement[]
+  event                                      event[]
+  notification                               notification[]
+  post                                       post[]
+  quiz                                       quiz[]
+  report                                     report[]
+  society_society_created_byToapp_user       society[]        @relation("society_created_byToapp_user")
+  society_society_university_ownerToapp_user society[]        @relation("society_university_ownerToapp_user")
+  student_profile                            student_profile?
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model event {
+  event_id    BigInt       @id @default(autoincrement())
+  society_id  BigInt
+  title       String       @db.VarChar(200)
+  description String?
+  starts_at   DateTime     @db.Timestamptz(6)
+  ends_at     DateTime?    @db.Timestamptz(6)
+  location    String?      @db.VarChar(200)
+  capacity    Int?
+  created_by  String       @db.Uuid
+  created_at  DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime     @default(now()) @db.Timestamptz(6)
+  app_user    app_user     @relation(fields: [created_by], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  society     society      @relation(fields: [society_id], references: [society_id], onDelete: Cascade, onUpdate: NoAction)
+  event_like  event_like[]
+  event_rsvp  event_rsvp[]
+
+  @@index([society_id, starts_at], map: "idx_event_society_time")
+}
+
+model event_like {
+  student_id      String          @db.Uuid
+  event_id        BigInt
+  created_at      DateTime        @default(now()) @db.Timestamptz(6)
+  event           event           @relation(fields: [event_id], references: [event_id], onDelete: Cascade, onUpdate: NoAction)
+  student_profile student_profile @relation(fields: [student_id], references: [student_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([student_id, event_id])
+}
+
+model event_rsvp {
+  student_id      String           @db.Uuid
+  event_id        BigInt
+  status          rsvp_status_enum
+  updated_at      DateTime         @default(now()) @db.Timestamptz(6)
+  event           event            @relation(fields: [event_id], references: [event_id], onDelete: Cascade, onUpdate: NoAction)
+  student_profile student_profile  @relation(fields: [student_id], references: [student_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([student_id, event_id])
+}
+
+model interest {
+  interest_id      BigInt             @id @default(autoincrement())
+  name             String             @unique @db.VarChar(80)
+  student_interest student_interest[]
+}
+
+model membership {
+  student_id      String                 @db.Uuid
+  society_id      BigInt
+  status          membership_status_enum @default(pending)
+  join_date       DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime               @default(now()) @db.Timestamptz(6)
+  society         society                @relation(fields: [society_id], references: [society_id], onDelete: Cascade, onUpdate: NoAction)
+  student_profile student_profile        @relation(fields: [student_id], references: [student_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([student_id, society_id])
+  @@index([society_id, status], map: "idx_membership_society_status")
+}
+
+model notification {
+  notification_id BigInt                 @id @default(autoincrement())
+  recipient_id    String                 @db.Uuid
+  type            notification_type_enum
+  message         String
+  link_url        String?
+  seen_at         DateTime?              @db.Timestamptz(6)
+  created_at      DateTime               @default(now()) @db.Timestamptz(6)
+  app_user        app_user               @relation(fields: [recipient_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([recipient_id, created_at(sort: Desc)], map: "idx_notification_recipient")
+}
+
+model post {
+  post_id    BigInt      @id @default(autoincrement())
+  society_id BigInt
+  author_id  String      @db.Uuid
+  content    String
+  created_at DateTime    @default(now()) @db.Timestamptz(6)
+  updated_at DateTime    @default(now()) @db.Timestamptz(6)
+  app_user   app_user    @relation(fields: [author_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  society    society     @relation(fields: [society_id], references: [society_id], onDelete: Cascade, onUpdate: NoAction)
+  post_like  post_like[]
+
+  @@index([society_id, created_at], map: "idx_post_society_time")
+}
+
+model post_like {
+  student_id      String          @db.Uuid
+  post_id         BigInt
+  created_at      DateTime        @default(now()) @db.Timestamptz(6)
+  post            post            @relation(fields: [post_id], references: [post_id], onDelete: Cascade, onUpdate: NoAction)
+  student_profile student_profile @relation(fields: [student_id], references: [student_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([student_id, post_id])
+}
+
+model quiz {
+  quiz_id       BigInt          @id @default(autoincrement())
+  society_id    BigInt?
+  title         String          @db.VarChar(200)
+  description   String?
+  due_at        DateTime?       @db.Timestamptz(6)
+  created_by    String          @db.Uuid
+  created_at    DateTime        @default(now()) @db.Timestamptz(6)
+  app_user      app_user        @relation(fields: [created_by], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  society       society?        @relation(fields: [society_id], references: [society_id], onDelete: Cascade, onUpdate: NoAction)
+  quiz_question quiz_question[]
+  quiz_response quiz_response[]
+}
+
+model quiz_option {
+  option_id            BigInt                 @id @default(autoincrement())
+  question_id          BigInt
+  label                String
+  value                String
+  quiz_question        quiz_question          @relation(fields: [question_id], references: [question_id], onDelete: Cascade, onUpdate: NoAction)
+  quiz_response_answer quiz_response_answer[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model quiz_question {
+  question_id          BigInt                 @id @default(autoincrement())
+  quiz_id              BigInt
+  prompt               String
+  kind                 String                 @db.VarChar(20)
+  quiz_option          quiz_option[]
+  quiz                 quiz                   @relation(fields: [quiz_id], references: [quiz_id], onDelete: Cascade, onUpdate: NoAction)
+  quiz_response_answer quiz_response_answer[]
+}
+
+model quiz_response {
+  response_id          BigInt                 @id @default(autoincrement())
+  quiz_id              BigInt
+  student_id           String                 @db.Uuid
+  submitted_at         DateTime               @default(now()) @db.Timestamptz(6)
+  quiz                 quiz                   @relation(fields: [quiz_id], references: [quiz_id], onDelete: Cascade, onUpdate: NoAction)
+  student_profile      student_profile        @relation(fields: [student_id], references: [student_id], onDelete: Cascade, onUpdate: NoAction)
+  quiz_response_answer quiz_response_answer[]
+
+  @@unique([quiz_id, student_id])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model quiz_response_answer {
+  response_id   BigInt
+  question_id   BigInt
+  option_id     BigInt?
+  free_text     String?
+  quiz_option   quiz_option?  @relation(fields: [option_id], references: [option_id], onDelete: Cascade, onUpdate: NoAction)
+  quiz_question quiz_question @relation(fields: [question_id], references: [question_id], onDelete: Cascade, onUpdate: NoAction)
+  quiz_response quiz_response @relation(fields: [response_id], references: [response_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([response_id, question_id])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model report {
+  report_id   BigInt             @id @default(autoincrement())
+  reporter_id String             @db.Uuid
+  target_type String             @db.VarChar(30)
+  target_id   String
+  reason      String
+  status      report_status_enum @default(open)
+  created_at  DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime           @default(now()) @db.Timestamptz(6)
+  app_user    app_user           @relation(fields: [reporter_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([status], map: "idx_report_status")
+}
+
+model society {
+  society_id                                  BigInt       @id @default(autoincrement())
+  society_name                                String       @unique @db.VarChar(150)
+  description                                 String?
+  category                                    String?      @db.VarChar(100)
+  created_by                                  String       @db.Uuid
+  university_owner                            String?      @db.Uuid
+  created_at                                  DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at                                  DateTime     @default(now()) @db.Timestamptz(6)
+  event                                       event[]
+  membership                                  membership[]
+  post                                        post[]
+  quiz                                        quiz[]
+  app_user_society_created_byToapp_user       app_user     @relation("society_created_byToapp_user", fields: [created_by], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  app_user_society_university_ownerToapp_user app_user?    @relation("society_university_ownerToapp_user", fields: [university_owner], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model student_interest {
+  student_id      String          @db.Uuid
+  interest_id     BigInt
+  interest        interest        @relation(fields: [interest_id], references: [interest_id], onDelete: Cascade, onUpdate: NoAction)
+  student_profile student_profile @relation(fields: [student_id], references: [student_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([student_id, interest_id])
+}
+
+model student_profile {
+  student_id       String             @id @db.Uuid
+  study_field      String?            @db.VarChar(100)
+  interests        String[]
+  availability     String?            @db.VarChar(100)
+  created_at       DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime           @default(now()) @db.Timestamptz(6)
+  event_like       event_like[]
+  event_rsvp       event_rsvp[]
+  membership       membership[]
+  post_like        post_like[]
+  quiz_response    quiz_response[]
+  student_interest student_interest[]
+  app_user         app_user           @relation(fields: [student_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+enum membership_status_enum {
+  pending
+  active
+  rejected
+  suspended
+  left
+}
+
+enum notification_type_enum {
+  membership_update
+  event_created
+  event_reminder
+  announcement
+  post
+  general
+}
+
+enum report_status_enum {
+  open
+  in_review
+  resolved
+  dismissed
+}
+
+enum rsvp_status_enum {
+  interested
+  going
+  declined
+  waitlisted
+  attended
+}
+
+enum user_role {
+  student
+  society_admin
+  university_admin
+}
+
+enum campus_type {
+  Mafikeng
+  Potchefstroom
+  Vanderbijlpark
+}
