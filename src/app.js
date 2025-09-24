@@ -9,10 +9,10 @@ import { env } from './config.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import usersRoutes from './modules/users/users.route.js';
 import studentRoutes from './modules/students/student.routes.js';
+import postsRoutes from './modules/posts/posts.routes.js';
 
-// Swagger (you already have this file)
-import swaggerUi from 'swagger-ui-express';
-import { swaggerSpec } from './docs.swagger.js';
+//Swagger
+import { swaggerUi, swaggerSpec } from './docs.swagger.js';
 
 const app = express();
 
@@ -52,13 +52,29 @@ app.use(
 app.get('/', (_req, res) => res.send('PukkeConnect API is running'));
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
+app.use(
+ '/docs',
+  helmet.contentSecurityPolicy({
+    useDefaults: true,
+    directives: {
+      "default-src": ["'self'"],
+      "script-src": ["'self'", "'unsafe-inline'"],
+      "style-src":  ["'self'", "'unsafe-inline'"],
+     "img-src":    ["'self'", "data:"],
+      "object-src": ["'none'"],
+    },
+  }),
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, { explorer: true })
+);
+
+
 // Mount feature routes (prefix with /api)
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/students', studentRoutes);
+app.use('/api', postsRoutes);
 
-// API docs
-app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // 404 handler
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));

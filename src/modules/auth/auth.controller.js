@@ -44,11 +44,11 @@ export async function login(req, res) {
 
     // 401 for auth failures (do not reveal which part failed)
     if (!user || !user.password_hash) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+      return res.status(401).json({ message: 'Invalid username or password' });
     }
 
     const ok = await bcrypt.compare(password, user.password_hash);
-    if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
+    if (!ok) return res.status(401).json({ message: 'Invalid username or password' });
 
     // Issue token (keep existing shape: sub = university_number, uid = user_id, role)
     const token = jwt.sign(
