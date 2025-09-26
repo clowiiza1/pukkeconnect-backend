@@ -11,6 +11,15 @@ import usersRoutes from './modules/users/users.route.js';
 import studentRoutes from './modules/students/student.routes.js';
 import postsRoutes from './modules/posts/posts.routes.js';
 import postsLikesRoutes from './modules/posts_likes/postsLikes.routes.js';
+import notificationsRoutes from './modules/notifications/notifications.routes.js';
+import quizzesRoutes from './modules/quizzes/quizzes.routes.js';
+import eventLikesRoutes from './modules/event_likes/eventLikes.routes.js';
+import interestsRoutes from './modules/interests/interests.routes.js';
+import recommendationsRoutes from './modules/recommendations/recommendations.routes.js';
+import announcementsRoutes from './modules/announcements/announcements.routes.js';
+import reportsRoutes from './modules/reports/reports.routes.js';
+import adminRoutes from './modules/admin/admin.routes.js';
+import societyAdminRoutes from './modules/societies/societyAdmin.routes.js';
 
 //Swagger
 import { swaggerUi, swaggerSpec } from './docs.swagger.js';
@@ -76,7 +85,15 @@ app.use('/api/users', usersRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api', postsRoutes);
 app.use('/api', postsLikesRoutes);
-
+app.use('/api',notificationsRoutes);
+app.use('/api',quizzesRoutes);
+app.use('/api', eventLikesRoutes);
+app.use('/api', interestsRoutes);
+app.use('/api', recommendationsRoutes);
+app.use('/api', announcementsRoutes);
+app.use('/api', reportsRoutes);
+app.use('/api', adminRoutes);
+app.use('/api', societyAdminRoutes);
 
 // 404 handler
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
