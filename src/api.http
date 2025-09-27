@@ -1,0 +1,45 @@
+### Test server root
+GET http://localhost:4000/
+
+//Register
+POST http://localhost:4000/api/auth/register
+Content-Type: application/json
+
+{
+  "FName": "Ellise",
+  "LName": "Brown",
+  "email": "1234555@mynwu.ac.za",
+  "field": "Computer Science",
+  "campus": "Mafikeng",
+  "password": "Pa$$w0rd"
+}
+
+//LOGIN
+POST http://localhost:4000/api/auth/login
+Content-Type: application/json
+
+{
+  "email":"1234555@mynwu.ac.za",
+  "password": "Pa$$w0rd"
+}
+
+//JWT Token from login response
+GET http://localhost:4000/api/auth/profile-any
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6IjEyMzQ1NTVAbXlud3UuYWMuemEiLCJGTmFtZSI6IkVsbGlzZSIsIkxOYW1lIjoiQnJvd24iLCJmaWVsZCI6IkNvbXB1dGVyIFNjaWVuY2UiLCJjYW1wdXMiOiJNYWZpa2VuZyIsImlhdCI6MTc1Nzg2Njc1NSwiZXhwIjoxNzU3ODcwMzU1fQ.7EzZRp2aRO6Nm-T38-qbYRflVj1VU2lljj3tTgQ_Ge0
+
+### Upsert RSVP
+POST http://localhost:4000/api/events/1/rsvp
+Content-Type: application/json
+Authorization: Bearer //token
+
+{
+  "status": "going"
+}
+
+### Cancel RSVP
+DELETE http://localhost:4000/api/events/1/rsvp
+Authorization: Bearer //token
+
+### List RSVPs (admin only)
+GET http://localhost:4000/api/events/1/rsvps
+Authorization: Bearer //admintoken

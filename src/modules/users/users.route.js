@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { Prisma, PrismaClient, $Enums } from '@prisma/client';
+import pkg from '@prisma/client';
+const { Prisma, PrismaClient, $Enums } = pkg;
 import { z } from 'zod';
 import { requireAuth } from '../../middleware/authJwt.js';
 

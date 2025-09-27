@@ -20,7 +20,7 @@ import announcementsRoutes from './modules/announcements/announcements.routes.js
 import reportsRoutes from './modules/reports/reports.routes.js';
 import adminRoutes from './modules/admin/admin.routes.js';
 import societyAdminRoutes from './modules/societies/societyAdmin.routes.js';
-import eventRsvpRoutes from "./module/routes/eventRsvp.routes.js";
+import eventRsvpRoutes from "./modules/routes/eventRsvp.routes.js";
 //Swagger
 import { swaggerUi, swaggerSpec } from './docs.swagger.js';
 
