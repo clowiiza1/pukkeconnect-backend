@@ -1,10 +1,12 @@
-import { Router } from 'express';
-import { Prisma, PrismaClient, $Enums } from '@prisma/client';
-import { z } from 'zod';
-import { requireAuth } from '../../middleware/authJwt.js';
+const express = require('express');
+const { PrismaClient } = require('@prisma/client');
+const { z } = require('zod');
+const { requireAuth } = require('../../middleware/authJwt.js');
 
 const prisma = new PrismaClient();
-const router = Router();
+const router = express.Router();
+
+
 
 const CAMPUS_VALUES =
   ($Enums && $Enums.campus_type && Object.values($Enums.campus_type)) ||
@@ -126,4 +128,4 @@ router.patch('/me', requireAuth, async (req, res) => {
   });
 });
 
-export default router;
+module.exports = router;
