@@ -10,3 +10,6 @@ export const env = {
     .filter(Boolean),
   trustProxy: process.env.TRUST_PROXY === 'true', // set true on Render/Fly/NGINX
 };
+import { PrismaClient } from '@prisma/client';
+const prisma = new PrismaClient();
+export default prisma;
