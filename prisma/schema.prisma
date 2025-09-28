@@ -5,12 +5,8 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-<<<<<<< Updated upstream
-  url      = "postgresql://postgres:Wiid@nam006@localhost:5432/pukkeconnect
-"
-=======
-  url      = "postgresql://postgres:cmpg@localhost:5432/pukkeconnect?schema=public"
->>>>>>> Stashed changes
+  url      = env("DATABASE_URL")
+
 }
 
 model announcement {
@@ -42,7 +38,6 @@ model app_user {
   post                                       post[]
   quiz                                       quiz[]
   report                                     report[]
-  password_reset_token                       password_reset_token[]
   society_society_created_byToapp_user       society[]        @relation("society_created_byToapp_user")
   society_society_university_ownerToapp_user society[]        @relation("society_university_ownerToapp_user")
   student_profile                            student_profile?
@@ -260,20 +255,6 @@ model student_profile {
   quiz_response    quiz_response[]
   student_interest student_interest[]
   app_user         app_user           @relation(fields: [student_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
-}
-
-model password_reset_token {
-  token_id    String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  user_id     String   @db.Uuid
-  token_hash  String   @db.VarChar(100)
-  expires_at  DateTime @db.Timestamptz(6)
-  consumed_at DateTime? @db.Timestamptz(6)
-  created_at  DateTime @default(now()) @db.Timestamptz(6)
-  request_ip  String?  @db.VarChar(45)
-  user_agent  String?  @db.VarChar(255)
-  app_user    app_user @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@index([user_id], map: "idx_password_reset_token_user")
 }
 
 enum membership_status_enum {
