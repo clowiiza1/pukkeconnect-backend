@@ -21,6 +21,7 @@ import reportsRoutes from './modules/reports/reports.routes.js';
 import adminRoutes from './modules/admin/admin.routes.js';
 import societyAdminRoutes from './modules/societies/societyAdmin.routes.js';
 import eventRsvpRoutes from "./modules/routes/eventRsvp.routes.js";
+import eventRsvpsRoutes from './modules/event_rsvps/eventRSVPS.routes.js';
 //Swagger
 import { swaggerUi, swaggerSpec } from './docs.swagger.js';
 
@@ -95,6 +96,7 @@ app.use('/api', reportsRoutes);
 app.use('/api', adminRoutes);
 app.use('/api', societyAdminRoutes);
 app.use('/api/events', eventRsvpRoutes);
+app.use('/api', eventRsvpsRoutes);
 // 404 handler
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 
