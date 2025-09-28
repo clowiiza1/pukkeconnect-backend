@@ -5,10 +5,12 @@ import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 import { env } from './config.js';
 
+
 // Routes
 import authRoutes from './modules/auth/auth.routes.js';
 import usersRoutes from './modules/users/users.route.js';
 import studentRoutes from './modules/students/student.routes.js';
+<<<<<<< Updated upstream
 import postsRoutes from './modules/posts/posts.routes.js';
 import postsLikesRoutes from './modules/posts_likes/postsLikes.routes.js';
 import notificationsRoutes from './modules/notifications/notifications.routes.js';
@@ -24,8 +26,17 @@ import eventRsvpRoutes from "./modules/routes/eventRsvp.routes.js";
 import eventRsvpsRoutes from './modules/event_rsvps/eventRSVPS.routes.js';
 //Swagger
 import { swaggerUi, swaggerSpec } from './docs.swagger.js';
+=======
+import membershipsRoutes from './modules/memberships/memberships.routes.js';
+
+// Swagger (you already have this file)
+import swaggerUi from 'swagger-ui-express';
+import { swaggerSpec } from './docs.swagger.js';
+>>>>>>> Stashed changes
 
 const app = express();
+
+app.use('/api/societies', membershipsRoutes);
 
 // If you deploy behind a proxy (Render/Fly/NGINX), enable this via env.TRUST_PROXY
 if (env.trustProxy) app.set('trust proxy', 1);
@@ -33,6 +44,7 @@ if (env.trustProxy) app.set('trust proxy', 1);
 // Security & parsing middleware
 app.use(helmet());
 app.use(express.json());
+
 
 // CORS (allow local dev + any additional origins from env)
 app.use(
