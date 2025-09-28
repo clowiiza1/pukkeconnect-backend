@@ -32,8 +32,15 @@
     "@prisma/client": "^6.16.2",
     "install": "^0.13.0",
     "nodemon": "^3.1.10",
+<<<<<<< Updated upstream
     "npm": "^11.6.1",
+<<<<<<< HEAD
     "prisma": "^6.16.2",
     "vitest": "^1.6.0"
+=======
+=======
+>>>>>>> Stashed changes
+    "prisma": "^6.16.2"
+>>>>>>> 4b943915a3da4b3232d19adb46b0dcf0e8a2c234
   }
 }
