@@ -1,8 +1,17 @@
 import { Router } from 'express';
-import { register, login } from './auth.controller.js';
+import rateLimit from 'express-rate-limit';
+import { register, login, requestPasswordReset, resetPassword } from './auth.controller.js';
 import { requireAuth } from '../../middleware/authJwt.js';
 
 const router = Router();
+
+const requestResetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 
 /**
  * @openapi
@@ -101,7 +110,67 @@ router.post('/register', register);
  */
 router.post('/login', login);
 
+/**
+ * @openapi
+ * /api/auth/forgot-password:
+ *   post:
+ *     summary: Request a password reset email
+ *     tags:
+ *       - Auth
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - identifier
+ *             properties:
+ *               identifier:
+ *                 type: string
+ *                 description: Email address or university number.
+ *                 example: 12345678
+ *     responses:
+ *       200:
+ *         description: Generic success message
+ *       400:
+ *         description: Missing identifier
+ */
+router.post('/forgot-password', requestResetLimiter, requestPasswordReset);
 
+/**
+ * @openapi
+ * /api/auth/reset-password:
+ *   post:
+ *     summary: Complete password reset using the emailed token
+ *     tags:
+ *       - Auth
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - userId
+ *               - token
+ *               - newPassword
+ *             properties:
+ *               userId:
+ *                 type: string
+ *                 format: uuid
+ *               token:
+ *                 type: string
+ *               newPassword:
+ *                 type: string
+ *                 format: password
+ *     responses:
+ *       204:
+ *         description: Password updated
+ *       400:
+ *         description: Invalid token or payload
+ */
+router.post('/reset-password', resetPassword);
 
 /**
  * @openapi

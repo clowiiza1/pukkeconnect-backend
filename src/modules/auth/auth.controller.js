@@ -1,8 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { env } from '../../config.js';
+import { sendPasswordResetEmail } from '../../lib/mailer.js';
 
 const prisma = new PrismaClient();
 
@@ -15,6 +17,16 @@ const registerSchema = z.object({
   major: z.string().min(1).optional(),
   campus: z.enum(['Mafikeng', 'Potchefstroom', 'Vanderbijlpark']).optional(),
   universityNumber: z.string().length(8), 
+});
+
+const requestResetSchema = z.object({
+  identifier: z.string().trim().min(1).max(255),
+});
+
+const resetPasswordSchema = z.object({
+  userId: z.string().uuid(),
+  token: z.string().min(1),
+  newPassword: z.string().min(8),
 });
 
 export async function login(req, res) {
@@ -174,6 +186,123 @@ export async function register(req, res) {
       // Unique violation (email or university_number)
       return res.status(409).json({ message: 'Email or student number already in use' });
     }
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+}
+
+export async function requestPasswordReset(req, res) {
+  const parsed = requestResetSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: 'identifier is required' });
+  }
+
+  const identifierInput = parsed.data.identifier.trim();
+  const identifier = identifierInput.toLowerCase();
+  const where = identifier.includes('@')
+    ? { email: identifier }
+    : { university_number: identifier };
+
+  try {
+    const user = await prisma.app_user.findUnique({ where });
+
+    if (user) {
+      const rawToken = crypto.randomBytes(32).toString('hex');
+      const tokenHash = await bcrypt.hash(rawToken, 12);
+      const expiresAt = new Date(Date.now() + env.resetTokenTtlMinutes * 60 * 1000);
+      const requestIp = req.ip ? String(req.ip).slice(0, 45) : null;
+      const userAgent = req.get?.('user-agent') ? req.get('user-agent').slice(0, 255) : null;
+
+      await prisma.$transaction(async trx => {
+        await trx.password_reset_token.updateMany({
+          where: { user_id: user.user_id, consumed_at: null },
+          data: { consumed_at: new Date() },
+        });
+
+        await trx.password_reset_token.create({
+          data: {
+            user_id: user.user_id,
+            token_hash: tokenHash,
+            expires_at: expiresAt,
+            request_ip: requestIp,
+            user_agent: userAgent,
+          },
+        });
+      });
+
+      let link;
+      try {
+        const url = new URL(env.frontendResetUrl);
+        url.searchParams.set('uid', user.user_id);
+        url.searchParams.set('token', rawToken);
+        link = url.toString();
+      } catch (err) {
+        const sep = env.frontendResetUrl.includes('?') ? '&' : '?';
+        link = `${env.frontendResetUrl}${sep}uid=${encodeURIComponent(user.user_id)}&token=${encodeURIComponent(rawToken)}`;
+      }
+
+      try {
+        await sendPasswordResetEmail({ to: user.email, link });
+      } catch (emailErr) {
+        console.error('sendPasswordResetEmail error', emailErr);
+      }
+    }
+  } catch (err) {
+    console.error('requestPasswordReset error', err);
+  }
+
+  return res.json({ message: 'If an account exists for the provided details, a password reset email has been sent.' });
+}
+
+export async function resetPassword(req, res) {
+  const parsed = resetPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: 'Invalid payload', errors: parsed.error.flatten() });
+  }
+
+  const { userId, token, newPassword } = parsed.data;
+
+  try {
+    const record = await prisma.password_reset_token.findFirst({
+      where: { user_id: userId, consumed_at: null },
+      orderBy: { created_at: 'desc' },
+    });
+
+    const now = new Date();
+    if (!record || record.expires_at <= now) {
+      return res.status(400).json({ message: 'Invalid or expired reset token' });
+    }
+
+    const match = await bcrypt.compare(token, record.token_hash);
+    if (!match) {
+      return res.status(400).json({ message: 'Invalid or expired reset token' });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 12);
+
+    await prisma.$transaction(async trx => {
+      await trx.app_user.update({
+        where: { user_id: userId },
+        data: { password_hash: newHash },
+      });
+
+      await trx.password_reset_token.update({
+        where: { token_id: record.token_id },
+        data: { consumed_at: now },
+      });
+
+      await trx.password_reset_token.updateMany({
+        where: {
+          user_id: userId,
+          consumed_at: null,
+          token_id: { not: record.token_id },
+        },
+        data: { consumed_at: now },
+      });
+    });
+
+    return res.status(204).send();
+  } catch (err) {
+    console.error('resetPassword error', err);
     return res.status(500).json({ message: 'Internal server error' });
   }
 }
