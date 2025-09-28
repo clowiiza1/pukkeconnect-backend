@@ -5,8 +5,12 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+<<<<<<< Updated upstream
   url      = "postgresql://postgres:Wiid@nam006@localhost:5432/pukkeconnect
 "
+=======
+  url      = "postgresql://postgres:cmpg@localhost:5432/pukkeconnect?schema=public"
+>>>>>>> Stashed changes
 }
 
 model announcement {
