@@ -6,7 +6,6 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-
 }
 
 model announcement {
@@ -56,6 +55,7 @@ model event {
   created_by  String       @db.Uuid
   created_at  DateTime     @default(now()) @db.Timestamptz(6)
   updated_at  DateTime     @default(now()) @db.Timestamptz(6)
+  deleted_at  DateTime?    @db.Timestamptz(6)
   app_user    app_user     @relation(fields: [created_by], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
   society     society      @relation(fields: [society_id], references: [society_id], onDelete: Cascade, onUpdate: NoAction)
   event_like  event_like[]
@@ -86,9 +86,16 @@ model event_rsvp {
 }
 
 model interest {
-  interest_id      BigInt             @id @default(autoincrement())
-  name             String             @unique @db.VarChar(80)
-  student_interest student_interest[]
+  interest_id          BigInt                 @id @default(autoincrement())
+  name                 String                 @unique @db.VarChar(80)
+  parent_id            BigInt?
+  parent               interest?              @relation("InterestHierarchy", fields: [parent_id], references: [interest_id], onUpdate: NoAction, map: "fk_interest_parent")
+  children             interest[]             @relation("InterestHierarchy")
+  quiz_option_interest quiz_option_interest[]
+  society_interest     society_interest[]
+  student_interest     student_interest[]
+
+  @@index([parent_id], map: "idx_interest_parent")
 }
 
 model membership {
@@ -161,7 +168,19 @@ model quiz_option {
   label                String
   value                String
   quiz_question        quiz_question          @relation(fields: [question_id], references: [question_id], onDelete: Cascade, onUpdate: NoAction)
+  quiz_option_interest quiz_option_interest[]
   quiz_response_answer quiz_response_answer[]
+}
+
+model quiz_option_interest {
+  option_id   BigInt
+  interest_id BigInt
+  weight      Int         @default(10)
+  interest    interest    @relation(fields: [interest_id], references: [interest_id], onDelete: Cascade)
+  quiz_option quiz_option @relation(fields: [option_id], references: [option_id], onDelete: Cascade)
+
+  @@id([option_id, interest_id])
+  @@index([interest_id], map: "idx_qoi_interest")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -215,26 +234,65 @@ model report {
   @@index([status], map: "idx_report_status")
 }
 
+model recommendation_event {
+  event_id    BigInt          @id @default(autoincrement())
+  student_id  String          @db.Uuid
+  event       String          @db.VarChar(50)
+  entity_type String          @db.VarChar(50)
+  entity_id   String          @db.VarChar(100)
+  payload     Json?
+  created_at  DateTime        @default(now()) @db.Timestamptz(6)
+  student     student_profile @relation(fields: [student_id], references: [student_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([student_id, created_at(sort: Desc)], map: "idx_re_evt_student_time")
+}
+
 model society {
-  society_id                                  BigInt       @id @default(autoincrement())
-  society_name                                String       @unique @db.VarChar(150)
+  society_id                                  BigInt             @id @default(autoincrement())
+  society_name                                String             @unique @db.VarChar(150)
   description                                 String?
-  category                                    String?      @db.VarChar(100)
-  created_by                                  String       @db.Uuid
-  university_owner                            String?      @db.Uuid
-  created_at                                  DateTime     @default(now()) @db.Timestamptz(6)
-  updated_at                                  DateTime     @default(now()) @db.Timestamptz(6)
+  category                                    String?            @db.VarChar(100)
+  campus                                      campus_type?
+  created_by                                  String             @db.Uuid
+  university_owner                            String?            @db.Uuid
+  created_at                                  DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at                                  DateTime           @default(now()) @db.Timestamptz(6)
   event                                       event[]
   membership                                  membership[]
   post                                        post[]
   quiz                                        quiz[]
-  app_user_society_created_byToapp_user       app_user     @relation("society_created_byToapp_user", fields: [created_by], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
-  app_user_society_university_ownerToapp_user app_user?    @relation("society_university_ownerToapp_user", fields: [university_owner], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  app_user_society_created_byToapp_user       app_user           @relation("society_created_byToapp_user", fields: [created_by], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  app_user_society_university_ownerToapp_user app_user?          @relation("society_university_ownerToapp_user", fields: [university_owner], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  society_interest                            society_interest[]
+  society_score                               society_score?
+}
+
+model society_interest {
+  society_id  BigInt
+  interest_id BigInt
+  weight      Int      @default(10)
+  interest    interest @relation(fields: [interest_id], references: [interest_id], onDelete: Cascade)
+  society     society  @relation(fields: [society_id], references: [society_id], onDelete: Cascade)
+
+  @@id([society_id, interest_id])
+  @@index([interest_id], map: "idx_society_interest_interest")
+}
+
+model society_score {
+  society_id       BigInt   @id
+  popularity_score Int      @default(0)
+  freshness_score  Int      @default(0)
+  updated_at       DateTime @default(now()) @db.Timestamptz(6)
+  society          society  @relation(fields: [society_id], references: [society_id], onDelete: Cascade)
+
+  @@index([popularity_score(sort: Desc)], map: "idx_society_score_popularity")
+  @@index([freshness_score(sort: Desc)], map: "idx_society_score_freshness")
 }
 
 model student_interest {
   student_id      String          @db.Uuid
   interest_id     BigInt
+  weight          Int             @default(10)
   interest        interest        @relation(fields: [interest_id], references: [interest_id], onDelete: Cascade, onUpdate: NoAction)
   student_profile student_profile @relation(fields: [student_id], references: [student_id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -242,19 +300,20 @@ model student_interest {
 }
 
 model student_profile {
-  student_id       String             @id @db.Uuid
-  study_field      String?            @db.VarChar(100)
-  interests        String[]
-  availability     String?            @db.VarChar(100)
-  created_at       DateTime           @default(now()) @db.Timestamptz(6)
-  updated_at       DateTime           @default(now()) @db.Timestamptz(6)
-  event_like       event_like[]
-  event_rsvp       event_rsvp[]
-  membership       membership[]
-  post_like        post_like[]
-  quiz_response    quiz_response[]
-  student_interest student_interest[]
-  app_user         app_user           @relation(fields: [student_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  student_id           String                 @id @db.Uuid
+  study_field          String?                @db.VarChar(100)
+  interests            String[]
+  availability         String?                @db.VarChar(100)
+  created_at           DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime               @default(now()) @db.Timestamptz(6)
+  event_like           event_like[]
+  event_rsvp           event_rsvp[]
+  membership           membership[]
+  post_like            post_like[]
+  quiz_response        quiz_response[]
+  recommendation_event recommendation_event[]
+  student_interest     student_interest[]
+  app_user             app_user               @relation(fields: [student_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
 }
 
 enum membership_status_enum {

@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "pukkeconnect-backend",
   "version": "1.0.0",
   "description": "",
@@ -18,6 +18,7 @@
   "dependencies": {
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
     "express": "^5.1.0",
     "express-rate-limit": "^8.1.0",
     "helmet": "^8.1.0",
@@ -32,15 +33,7 @@
     "@prisma/client": "^6.16.2",
     "install": "^0.13.0",
     "nodemon": "^3.1.10",
-<<<<<<< Updated upstream
-    "npm": "^11.6.1",
-<<<<<<< HEAD
     "prisma": "^6.16.2",
     "vitest": "^1.6.0"
-=======
-=======
->>>>>>> Stashed changes
-    "prisma": "^6.16.2"
->>>>>>> 4b943915a3da4b3232d19adb46b0dcf0e8a2c234
   }
 }
