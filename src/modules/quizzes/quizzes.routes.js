@@ -616,6 +616,7 @@ router.post('/matchmaker/quiz/submit', requireAuth, async (req, res, next) => {
       totalInterests: result.synced.length,
     });
   } catch (e) {
+    console.error('Matchmaker quiz submit error:', e);
     if (e?.issues) return res.status(400).json({ message: 'Invalid input', errors: e.issues });
     if (e?.status === 400) return res.status(400).json({ message: e.message });
     next(e);

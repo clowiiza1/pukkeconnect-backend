@@ -212,11 +212,12 @@ model quiz_response_answer {
   question_id   BigInt
   option_id     BigInt?
   free_text     String?
+  answer_id     BigInt        @id @default(autoincrement())
   quiz_option   quiz_option?  @relation(fields: [option_id], references: [option_id], onDelete: Cascade, onUpdate: NoAction)
   quiz_question quiz_question @relation(fields: [question_id], references: [question_id], onDelete: Cascade, onUpdate: NoAction)
   quiz_response quiz_response @relation(fields: [response_id], references: [response_id], onDelete: Cascade, onUpdate: NoAction)
 
-  @@id([response_id, question_id])
+  @@unique([response_id, question_id, option_id], map: "quiz_response_answer_unique")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.

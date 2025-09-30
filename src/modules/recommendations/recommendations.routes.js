@@ -210,26 +210,17 @@ router.get('/recommendations', requireAuth, async (req, res, next) => {
       },
     };
 
-    let societies;
-    if (baseMatchMap.size) {
-      const ids = [...baseMatchMap.keys()].map((id) => BigInt(id));
-      societies = await prisma.society.findMany({
-        where: { society_id: { in: ids } },
-        include: societyInclude,
-      });
-    } else {
-      societies = await prisma.society.findMany({
-        include: societyInclude,
-        orderBy: [
-          { society_score: { popularity_score: 'desc' } },
-          { created_at: 'desc' },
-        ],
-        take: Math.max(limit * 4, 40),
-      });
-      for (const society of societies) {
-        baseMatchMap.set(String(society.society_id), 0);
-      }
+    // If user has no interests, return empty recommendations
+    if (baseMatchMap.size === 0) {
+      return res.json({ rails: [] });
     }
+
+    // Fetch societies that match the student's interests
+    const ids = [...baseMatchMap.keys()].map((id) => BigInt(id));
+    const societies = await prisma.society.findMany({
+      where: { society_id: { in: ids } },
+      include: societyInclude,
+    });
 
     if (!societies.length) {
       return res.json({ rails: [] });
