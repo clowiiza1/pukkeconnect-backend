@@ -119,7 +119,7 @@ model notification {
   link_url        String?
   seen_at         DateTime?              @db.Timestamptz(6)
   created_at      DateTime               @default(now()) @db.Timestamptz(6)
-  app_user        app_user               @relation(fields: [recipient_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  app_user        app_user               @relation(fields: [recipient_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_notification_recipient_app_user")
 
   @@index([recipient_id, created_at(sort: Desc)], map: "idx_notification_recipient")
 }
@@ -131,7 +131,7 @@ model post {
   content    String
   created_at DateTime    @default(now()) @db.Timestamptz(6)
   updated_at DateTime    @default(now()) @db.Timestamptz(6)
-  app_user   app_user    @relation(fields: [author_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  app_user   app_user    @relation(fields: [author_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_post_author_app_user")
   society    society     @relation(fields: [society_id], references: [society_id], onDelete: Cascade, onUpdate: NoAction)
   post_like  post_like[]
 
@@ -156,7 +156,7 @@ model quiz {
   due_at        DateTime?       @db.Timestamptz(6)
   created_by    String          @db.Uuid
   created_at    DateTime        @default(now()) @db.Timestamptz(6)
-  app_user      app_user        @relation(fields: [created_by], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  app_user      app_user        @relation(fields: [created_by], references: [user_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_quiz_created_by_app_user")
   society       society?        @relation(fields: [society_id], references: [society_id], onDelete: Cascade, onUpdate: NoAction)
   quiz_question quiz_question[]
   quiz_response quiz_response[]
@@ -229,7 +229,7 @@ model report {
   status      report_status_enum @default(open)
   created_at  DateTime           @default(now()) @db.Timestamptz(6)
   updated_at  DateTime           @default(now()) @db.Timestamptz(6)
-  app_user    app_user           @relation(fields: [reporter_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  app_user    app_user           @relation(fields: [reporter_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_report_reporter_app_user")
 
   @@index([status], map: "idx_report_status")
 }
@@ -261,8 +261,8 @@ model society {
   membership                                  membership[]
   post                                        post[]
   quiz                                        quiz[]
-  app_user_society_created_byToapp_user       app_user           @relation("society_created_byToapp_user", fields: [created_by], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
-  app_user_society_university_ownerToapp_user app_user?          @relation("society_university_ownerToapp_user", fields: [university_owner], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  app_user_society_created_byToapp_user       app_user           @relation("society_created_byToapp_user", fields: [created_by], references: [user_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_society_created_by_app_user")
+  app_user_society_university_ownerToapp_user app_user?          @relation("society_university_ownerToapp_user", fields: [university_owner], references: [user_id], onUpdate: NoAction, map: "fk_society_university_owner_app_user")
   society_interest                            society_interest[]
   society_score                               society_score?
 }
@@ -313,7 +313,7 @@ model student_profile {
   quiz_response        quiz_response[]
   recommendation_event recommendation_event[]
   student_interest     student_interest[]
-  app_user             app_user               @relation(fields: [student_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  app_user             app_user               @relation(fields: [student_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_student_profile_user")
 }
 
 enum membership_status_enum {
