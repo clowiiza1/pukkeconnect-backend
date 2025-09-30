@@ -5,6 +5,7 @@ import { requireAuth } from '../../middleware/authJwt.js';
 
 const prisma = new PrismaClient();
 const router = Router();
+const isAdmin = (role) => role === 'society_admin' || role === 'university_admin';
 
 /**
  * API payloads use camelCase, DB uses snake_case.
@@ -63,6 +64,53 @@ const upsertProfileSchema = z.object({
  *       404:
  *         description: Profile not found
  */
+
+/**
+ * @openapi
+ * /api/students/{studentId}/societies:
+ *   get:
+ *     tags: [Students]
+ *     summary: List societies a student belongs to
+ *     description: Students can view their own memberships. Society or university admins can view any student's memberships.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: studentId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Memberships retrieved
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 total: { type: integer, example: 2 }
+ *                 memberships:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       society:
+ *                         type: object
+ *                         properties:
+ *                           id: { type: string }
+ *                           name: { type: string }
+ *                           category: { type: string, nullable: true }
+ *                           campus: { type: string, nullable: true }
+ *                           description: { type: string, nullable: true }
+ *                       status: { type: string, example: "active" }
+ *                       joinDate: { type: string, format: date-time, nullable: true }
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Student not found
+ */
+
 /**
  * @openapi
  * /api/students/me/profile:
@@ -215,18 +263,83 @@ router.get('/me/profile', requireAuth, async (req, res, next) => {
   }
 });
 
+router.get('/:studentId/societies', requireAuth, async (req, res, next) => {
+  try {
+    const { studentId } = req.params;
+    const requesterId = req.user.uid || req.user.id;
+    if (requesterId !== studentId && !isAdmin(req.user.role)) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    const studentExists = await prisma.app_user.findUnique({
+      where: { user_id: studentId },
+      select: { user_id: true },
+    });
+    if (!studentExists) return res.status(404).json({ message: 'Student not found' });
+
+    const memberships = await prisma.membership.findMany({
+      where: { student_id: studentId },
+      include: {
+        society: {
+          select: {
+            society_id: true,
+            society_name: true,
+            category: true,
+            campus: true,
+            description: true,
+          },
+        },
+      },
+      orderBy: { join_date: 'desc' },
+    });
+
+    const response = memberships.map((membership) => ({
+      society: {
+        id: String(membership.society.society_id),
+        name: membership.society.society_name,
+        category: membership.society.category ?? null,
+        campus: membership.society.campus ?? null,
+        description: membership.society.description ?? null,
+      },
+      status: membership.status,
+      joinDate: membership.join_date,
+    }));
+
+    return res.json({ total: response.length, memberships: response });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/students/:universityNumber/profile (admin only)
 router.get('/:universityNumber/profile', requireAuth, async (req, res, next) => {
   try {
     if (req.user.role !== 'university_admin' && req.user.role !== 'society_admin') {
       return res.status(403).json({ message: 'Forbidden' });
     }
-    const profile = await prisma.student_profile.findUnique({
+    const user = await prisma.app_user.findUnique({
       where: { university_number: req.params.universityNumber },
+      select: {
+        university_number: true,
+        student_profile: {
+          select: {
+            study_field: true,
+            interests: true,
+            availability: true,
+            created_at: true,
+            updated_at: true,
+          },
+        },
+      },
     });
-    if (!profile) return res.status(404).json({ message: 'Profile not found' });
+
+    const profile = user?.student_profile;
+    if (!user || !profile) {
+      return res.status(404).json({ message: 'Profile not found' });
+    }
+
     res.json({
-      studentId: profile.university_number,
+      studentId: user.university_number,
       studyField: profile.study_field ?? null,
       interests: profile.interests ?? [],
       availability: profile.availability ?? null,
@@ -243,11 +356,12 @@ router.put('/me/profile', requireAuth, async (req, res, next) => {
   try {
     const body = upsertProfileSchema.parse(req.body);
     const universityNumber = req.user.universityNumber; // use university number from JWT
+    const studentId = req.user.id; // internal UUID for relations
 
     const saved = await prisma.student_profile.upsert({
-      where: { university_number: universityNumber },
+      where: { student_id: studentId },
       create: {
-        university_number: universityNumber,
+        student_id: studentId,
         study_field: body.studyField ?? null,
         interests: body.interests ?? [],
         availability: body.availability ?? null,
@@ -261,7 +375,7 @@ router.put('/me/profile', requireAuth, async (req, res, next) => {
     });
 
     res.status(200).json({
-      studentId: saved.university_number,
+      studentId: universityNumber,
       studyField: saved.study_field ?? null,
       interests: saved.interests ?? [],
       availability: saved.availability ?? null,
@@ -281,14 +395,15 @@ router.patch('/me/profile', requireAuth, async (req, res, next) => {
   try {
     const partial = upsertProfileSchema.partial().parse(req.body);
     const universityNumber = req.user.universityNumber;
+    const studentId = req.user.id;
 
     const existing = await prisma.student_profile.findUnique({
-      where: { university_number: universityNumber },
+      where: { student_id: studentId },
     });
     if (!existing) return res.status(404).json({ message: 'Profile not found' });
 
     const saved = await prisma.student_profile.update({
-      where: { university_number: universityNumber },
+      where: { student_id: studentId },
       data: {
         study_field: partial.studyField ?? existing.study_field,
         interests: partial.interests ?? existing.interests,
@@ -298,7 +413,7 @@ router.patch('/me/profile', requireAuth, async (req, res, next) => {
     });
 
     res.json({
-      studentId: saved.university_number,
+      studentId: universityNumber,
       studyField: saved.study_field ?? null,
       interests: saved.interests ?? [],
       availability: saved.availability ?? null,

@@ -22,6 +22,7 @@ import adminRoutes from './modules/admin/admin.routes.js';
 import societyAdminRoutes from './modules/societies/societyAdmin.routes.js';
 import eventRsvpsRoutes from './modules/event_rsvps/eventRSVPS.routes.js';
 import membershipsRoutes from './modules/memberships/memberships.routes.js';
+import studentMembershipRoutes from './modules/memberships/memberships.student.routes.js';
 import eventsRoutes from './modules/events/events.routes.js';
 import societiesRoutes from './modules/societies/societies.routes.js';
 import trackingRoutes from './modules/tracking/tracking.routes.js';
@@ -101,6 +102,7 @@ app.use('/api', societyAdminRoutes);
 app.use('/api', eventRsvpsRoutes);
 app.use('/api', trackingRoutes);
 app.use('/api/societies', membershipsRoutes);
+app.use('/api/memberships', studentMembershipRoutes);
 app.use('/api', societiesRoutes);
 
 // 404 handler

@@ -13,6 +13,18 @@ export const studentIdParamSchema = z.object({
   studentId: z.string().uuid('studentId must be a valid UUID')
 });
 
+export const studentIdentifierParamSchema = z.object({
+  studentIdentifier: z.string().trim().min(1, 'studentIdentifier is required')
+});
+
+export const studentMembershipStatusParamsSchema = z.object({
+  studentIdentifier: z.string().trim().min(1, 'studentIdentifier is required'),
+  societyId: z
+    .string()
+    .regex(/^\d+$/, 'societyId must be a number')
+    .transform(Number),
+});
+
 // Middleware to validate params
 export function validateParams(schema) {
   return (req, res, next) => {
