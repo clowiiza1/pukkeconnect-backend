@@ -168,7 +168,12 @@ router.get('/societies', async (req, res, next) => {
         andFilters.push({
           OR: [
             { campus: q.campus },
-            { app_user_society_created_byToapp_user: { campus: q.campus } },
+            {
+              AND: [
+                { campus: null },
+                { app_user_society_created_byToapp_user: { campus: q.campus } },
+              ],
+            },
           ],
         });
       } else {
