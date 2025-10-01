@@ -271,6 +271,153 @@ router.post('/societies', requireAuth, async (req, res, next) => {
   }
 });
 
+// GET /api/societies/my-society - Get the society managed by the current user
+/**
+ * @openapi
+ * /api/societies/my-society:
+ *   get:
+ *     tags: [Societies]
+ *     summary: Get the society managed by the current user (society_admin only)
+ *     security: [ { bearerAuth: [] } ]
+ *     responses:
+ *       200:
+ *         description: Society details
+ *       403:
+ *         description: User is not a society admin
+ *       404:
+ *         description: No society found for this admin
+ */
+router.get('/societies/my-society', requireAuth, async (req, res, next) => {
+  try {
+    // Only society admins can access this endpoint
+    if (req.user.role !== 'society_admin') {
+      return res.status(403).json({ message: 'Only society admins can access this endpoint' });
+    }
+
+    // Find the society where this user is assigned as society_admin
+    const society = await prisma.society.findFirst({
+      where: { society_admin_id: req.user.uid },
+      select: {
+        society_id: true,
+        society_name: true,
+        description: true,
+        category: true,
+        campus: true,
+        created_at: true,
+        updated_at: true,
+      }
+    });
+
+    if (!society) {
+      return res.status(404).json({ message: 'No society found for this admin' });
+    }
+
+    // Return society with BigInt converted to string
+    res.json({
+      societyId: String(society.society_id),
+      name: society.society_name,
+      description: society.description,
+      category: society.category,
+      campus: society.campus,
+      createdAt: society.created_at,
+      updatedAt: society.updated_at,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/societies/:society_id/assign-admin - Assign a society admin (university_admin only)
+/**
+ * @openapi
+ * /api/societies/{society_id}/assign-admin:
+ *   put:
+ *     tags: [Societies]
+ *     summary: Assign a society admin to a society (university_admin only)
+ *     security: [ { bearerAuth: [] } ]
+ *     parameters:
+ *       - in: path
+ *         name: society_id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               adminUserId: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Admin assigned successfully
+ *       400:
+ *         description: Invalid input or user is not a society_admin
+ *       403:
+ *         description: Only university admins can assign society admins
+ *       404:
+ *         description: Society or user not found
+ */
+router.put('/societies/:society_id/assign-admin', requireAuth, async (req, res, next) => {
+  try {
+    // Only university admins can assign society admins
+    if (req.user.role !== 'university_admin') {
+      return res.status(403).json({ message: 'Only university admins can assign society admins' });
+    }
+
+    const { society_id } = req.params;
+    if (!/^\d+$/.test(society_id)) {
+      return res.status(400).json({ message: 'Invalid society_id' });
+    }
+
+    const { adminUserId } = req.body;
+    if (!adminUserId || typeof adminUserId !== 'string') {
+      return res.status(400).json({ message: 'adminUserId is required' });
+    }
+
+    // Verify the user exists and is a society_admin
+    const user = await prisma.app_user.findUnique({
+      where: { user_id: adminUserId },
+      select: { role: true, first_name: true, last_name: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (user.role !== 'society_admin') {
+      return res.status(400).json({ message: 'User must have society_admin role' });
+    }
+
+    // Update the society with the new admin
+    const updated = await prisma.society.update({
+      where: { society_id: BigInt(society_id) },
+      data: {
+        society_admin_id: adminUserId,
+        updated_at: new Date()
+      },
+      select: {
+        society_id: true,
+        society_name: true,
+        society_admin_id: true,
+      }
+    });
+
+    res.json({
+      message: 'Society admin assigned successfully',
+      societyId: String(updated.society_id),
+      societyName: updated.society_name,
+      adminId: updated.society_admin_id,
+      adminName: `${user.first_name} ${user.last_name}`
+    });
+  } catch (err) {
+    if (err?.code === 'P2025') {
+      return res.status(404).json({ message: 'Society not found' });
+    }
+    next(err);
+  }
+});
+
 // GET /api/societies/:society_id
 router.get('/societies/:society_id', async (req, res, next) => {
   try {

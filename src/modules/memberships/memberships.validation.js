@@ -13,6 +13,15 @@ export const studentIdParamSchema = z.object({
   studentId: z.string().uuid('studentId must be a valid UUID')
 });
 
+// Combined schema for routes with both societyId and studentId
+export const societyStudentParamsSchema = z.object({
+  societyId: z
+    .string()
+    .regex(/^\d+$/, 'societyId must be a number')
+    .transform(Number),
+  studentId: z.string().uuid('studentId must be a valid UUID')
+});
+
 export const studentIdentifierParamSchema = z.object({
   studentIdentifier: z.string().trim().min(1, 'studentIdentifier is required')
 });
