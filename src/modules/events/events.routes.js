@@ -207,6 +207,7 @@ router.get('/events', async (req, res, next) => {
       endsAt: e.ends_at,
       location: e.location ?? null,
       capacity: e.capacity ?? null,
+      status: e.status,
       createdBy: {
         firstName: e.app_user.first_name,
         lastName: e.app_user.last_name,
@@ -296,6 +297,7 @@ router.get('/events/:event_id', async (req, res, next) => {
       endsAt: e.ends_at,
       location: e.location ?? null,
       capacity: e.capacity ?? null,
+      status: e.status,
       createdAt: e.created_at,
       updatedAt: e.updated_at,
       createdBy: {
@@ -387,6 +389,57 @@ router.delete('/events/:event_id', requireAuth, async (req, res, next) => {
     });
 
     res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/events/:event_id/cancel (cancel event and notify RSVPs)
+router.post('/events/:event_id/cancel', requireAuth, async (req, res, next) => {
+  try {
+    const { event_id } = req.params;
+    if (!/^\d+$/.test(event_id)) return res.status(400).json({ message: 'Invalid event_id' });
+
+    const existing = await prisma.event.findUnique({
+      where: { event_id: BigInt(event_id) },
+      select: { created_by: true, deleted_at: true, status: true, title: true },
+    });
+
+    if (!existing || existing.deleted_at) return res.status(404).json({ message: 'Not found' });
+    if (existing.status === 'cancelled') return res.status(400).json({ message: 'Event already cancelled' });
+
+    if (!(isAdmin(req.user.role) || existing.created_by === req.user.uid)) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    // Update event status to cancelled
+    const updated = await prisma.event.update({
+      where: { event_id: BigInt(event_id) },
+      data: { status: 'cancelled', updated_at: new Date() },
+    });
+
+    // Get all students who RSVP'd
+    const rsvps = await prisma.event_rsvp.findMany({
+      where: { event_id: BigInt(event_id) },
+      select: { student_id: true },
+    });
+
+    // Create notifications for all RSVP'd students
+    if (rsvps.length > 0) {
+      await prisma.notification.createMany({
+        data: rsvps.map(rsvp => ({
+          recipient_id: rsvp.student_id,
+          type: 'event_reminder',
+          message: `Event "${existing.title}" has been cancelled.`,
+        })),
+      });
+    }
+
+    res.json({
+      eventId: String(updated.event_id),
+      status: updated.status,
+      notifiedStudents: rsvps.length,
+    });
   } catch (err) {
     next(err);
   }

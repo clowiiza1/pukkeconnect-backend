@@ -1,5 +1,8 @@
 import jwt from 'jsonwebtoken';
+import { PrismaClient } from '@prisma/client';
 import { env } from '../config.js';
+
+const prisma = new PrismaClient();
 
 export function requireAuth(req, res, next) {
   const hdr = req.headers.authorization || '';

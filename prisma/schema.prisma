@@ -39,25 +39,27 @@ model app_user {
   report                                     report[]
   society_society_created_byToapp_user       society[]        @relation("society_created_byToapp_user")
   society_society_university_ownerToapp_user society[]        @relation("society_university_ownerToapp_user")
+  society_managed_by_admin                   society[]        @relation("society_admin_idToapp_user")
   student_profile                            student_profile?
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model event {
-  event_id    BigInt       @id @default(autoincrement())
+  event_id    BigInt            @id @default(autoincrement())
   society_id  BigInt
-  title       String       @db.VarChar(200)
+  title       String            @db.VarChar(200)
   description String?
-  starts_at   DateTime     @db.Timestamptz(6)
-  ends_at     DateTime?    @db.Timestamptz(6)
-  location    String?      @db.VarChar(200)
+  starts_at   DateTime          @db.Timestamptz(6)
+  ends_at     DateTime?         @db.Timestamptz(6)
+  location    String?           @db.VarChar(200)
   capacity    Int?
-  created_by  String       @db.Uuid
-  created_at  DateTime     @default(now()) @db.Timestamptz(6)
-  updated_at  DateTime     @default(now()) @db.Timestamptz(6)
-  deleted_at  DateTime?    @db.Timestamptz(6)
-  app_user    app_user     @relation(fields: [created_by], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
-  society     society      @relation(fields: [society_id], references: [society_id], onDelete: Cascade, onUpdate: NoAction)
+  created_by  String            @db.Uuid
+  created_at  DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime          @default(now()) @db.Timestamptz(6)
+  deleted_at  DateTime?         @db.Timestamptz(6)
+  status      event_status_enum @default(scheduled)
+  app_user    app_user          @relation(fields: [created_by], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  society     society           @relation(fields: [society_id], references: [society_id], onDelete: Cascade, onUpdate: NoAction)
   event_like  event_like[]
   event_rsvp  event_rsvp[]
 
@@ -256,6 +258,7 @@ model society {
   campus                                      campus_type?
   created_by                                  String             @db.Uuid
   university_owner                            String?            @db.Uuid
+  society_admin_id                            String?            @db.Uuid
   created_at                                  DateTime           @default(now()) @db.Timestamptz(6)
   updated_at                                  DateTime           @default(now()) @db.Timestamptz(6)
   event                                       event[]
@@ -264,6 +267,7 @@ model society {
   quiz                                        quiz[]
   app_user_society_created_byToapp_user       app_user           @relation("society_created_byToapp_user", fields: [created_by], references: [user_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_society_created_by_app_user")
   app_user_society_university_ownerToapp_user app_user?          @relation("society_university_ownerToapp_user", fields: [university_owner], references: [user_id], onUpdate: NoAction, map: "fk_society_university_owner_app_user")
+  app_user_society_admin                      app_user?          @relation("society_admin_idToapp_user", fields: [society_admin_id], references: [user_id], onUpdate: NoAction, map: "fk_society_admin")
   society_interest                            society_interest[]
   society_score                               society_score?
 }
@@ -347,6 +351,12 @@ enum rsvp_status_enum {
   declined
   waitlisted
   attended
+}
+
+enum event_status_enum {
+  scheduled
+  cancelled
+  completed
 }
 
 enum user_role {

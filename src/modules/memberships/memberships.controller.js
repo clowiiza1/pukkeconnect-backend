@@ -5,7 +5,7 @@ const prisma = new PrismaClient();
 
 // Zod schema for updating membership status
 const updateStatusSchema = z.object({
-  status: z.enum(['active', 'rejected', 'suspended', 'left'])
+  status: z.enum(['pending', 'active', 'approved', 'rejected', 'suspended', 'left'])
 });
 
 const uuidSchema = z.string().uuid();
@@ -98,6 +98,8 @@ export const updateMembershipStatus = async (req, res, next) => {
   const { societyId, studentId } = req.params;
 
   try {
+    console.log('Update membership - params:', req.params);
+    console.log('Update membership - body:', req.body);
     const body = updateStatusSchema.parse(req.body);
 
     const membership = await prisma.membership.update({
@@ -149,6 +151,9 @@ export const listMembers = async (req, res, next) => {
       studentId: m.student_id,
       firstName: m.student_profile?.app_user?.first_name ?? null,
       lastName: m.student_profile?.app_user?.last_name ?? null,
+      email: m.student_profile?.app_user?.email ?? null,
+      phoneNumber: m.student_profile?.app_user?.phone_number ?? null,
+      universityNumber: m.student_profile?.app_user?.university_number ?? null,
       status: m.status,
       joinDate: m.join_date
     }));

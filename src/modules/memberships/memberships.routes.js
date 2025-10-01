@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requireAuth, canManageSociety } from '../../middleware/authJwt.js';
 import * as membershipsController from './memberships.controller.js';
-import { validateParams, societyIdParamSchema, studentIdParamSchema } from './memberships.validation.js';
+import { validateParams, societyIdParamSchema, studentIdParamSchema, societyStudentParamsSchema } from './memberships.validation.js';
 
 const router = Router();
 
@@ -104,8 +104,7 @@ router.post(
 router.put(
   '/:societyId/memberships/:studentId',
   requireAuth,
-  validateParams(societyIdParamSchema),
-  validateParams(studentIdParamSchema),
+  validateParams(societyStudentParamsSchema),
   canManageSociety,
   membershipsController.updateMembershipStatus
 );
