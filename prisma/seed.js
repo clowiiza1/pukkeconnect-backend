@@ -1,8 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 import bcrypt from 'bcryptjs';
+// Generate demo password hash once
 const hash = await bcrypt.hash('Pa$$w0rd', 10);
 
+// Seed initial demo content
 async function main() {
   // Upsert demo user
   const demoUser = await prisma.app_user.upsert({
@@ -40,6 +42,7 @@ async function main() {
   console.log('✓ Created student profile');
 
   // Seed interests
+  // Canonical list of interest tags
   const interestsData = [
     'Technology', 'Coding', 'AI & Machine Learning', 'Robotics', 'Web Development',
     'Sports', 'Football', 'Basketball', 'Rugby', 'Athletics',
@@ -50,6 +53,7 @@ async function main() {
     'Culture', 'Debate', 'Public Speaking', 'Writing'
   ];
 
+  // Persist each interest exactly once
   const createdInterests = [];
   for (const name of interestsData) {
     const interest = await prisma.interest.upsert({
@@ -63,6 +67,7 @@ async function main() {
   console.log(`✓ Seeded ${createdInterests.length} interests`);
 
   // Check if matchmaker quiz exists
+  // Reuse the global quiz if it already exists
   const existingQuiz = await prisma.quiz.findFirst({
     where: { society_id: null },
   });
@@ -73,6 +78,7 @@ async function main() {
     quiz = existingQuiz;
   } else {
     // Create matchmaker quiz (society_id = null for global quiz)
+    // Create the global matchmaker quiz
     quiz = await prisma.quiz.create({
       data: {
         society_id: null, // NULL = matchmaker quiz
@@ -85,6 +91,7 @@ async function main() {
   }
 
   // Skip quiz questions if quiz already existed (avoid duplicates)
+  // Avoid duplicating question bank on reruns
   const existingQuestions = await prisma.quiz_question.findMany({
     where: { quiz_id: quiz.quiz_id },
   });
@@ -101,6 +108,7 @@ async function main() {
     },
   });
 
+  // Map quiz options to interest tags
   const q1Options = [
     { label: 'Technology & Coding', value: 'tech', interests: ['Technology', 'Coding', 'Web Development'] },
     { label: 'AI & Robotics', value: 'ai', interests: ['AI & Machine Learning', 'Robotics', 'Technology'] },
@@ -111,6 +119,7 @@ async function main() {
     { label: 'Community Service', value: 'community', interests: ['Community Service', 'Environment'] },
   ];
 
+  // Store each option and its related interests
   for (const opt of q1Options) {
     const option = await prisma.quiz_option.create({
       data: {
