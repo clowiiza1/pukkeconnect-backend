@@ -208,6 +208,7 @@ router.get('/events', async (req, res, next) => {
       location: e.location ?? null,
       capacity: e.capacity ?? null,
       status: e.status,
+      createdAt: e.created_at,
       createdBy: {
         firstName: e.app_user.first_name,
         lastName: e.app_user.last_name,
