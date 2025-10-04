@@ -57,7 +57,7 @@ app.use(morgan(env.nodeEnv === 'production' ? 'combined' : 'dev'));
 app.use(
   rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 300, // 300 requests per IP per window
+    max: 1000, // 1000 requests per IP per window (increased for development)
     standardHeaders: true,
     legacyHeaders: false,
   })

@@ -147,6 +147,8 @@ router.get('/societies', async (req, res, next) => {
     const q = listSchema.parse(req.query);
     const where = {
       ...( 'deleted_at' in prisma.society.fields ? { deleted_at: null } : {} ),
+      // Only show approved societies to students
+      status: 'approved',
     };
 
     const andFilters = [];
@@ -165,14 +167,13 @@ router.get('/societies', async (req, res, next) => {
 
     if (q.campus) {
       if (hasSocietyCampus) {
+        // Match either: society has this campus directly, OR society's campus is null and creator has this campus
         andFilters.push({
           OR: [
             { campus: q.campus },
             {
-              AND: [
-                { campus: null },
-                { app_user_society_created_byToapp_user: { campus: q.campus } },
-              ],
+              campus: null,
+              app_user_society_created_byToapp_user: { campus: q.campus }
             },
           ],
         });
@@ -197,6 +198,9 @@ router.get('/societies', async (req, res, next) => {
       ...(hasSocietyCampus ? { campus: true } : {}),
       app_user_society_created_byToapp_user: {
         select: { first_name: true, last_name: true, campus: true },
+      },
+      membership: {
+        where: { status: 'active' },
       },
       _count: { select: { membership: true, event: true, post: true } },
     };
@@ -227,7 +231,7 @@ router.get('/societies', async (req, res, next) => {
         campus: s.app_user_society_created_byToapp_user.campus ?? null,
       },
       counts: {
-        members: s._count.membership,
+        members: s.membership.length,
         events:  s._count.event,
         posts:   s._count.post,
       },
@@ -247,6 +251,10 @@ router.post('/societies', requireAuth, async (req, res, next) => {
     // Any authenticated user may create; universityOwnerId only honored for admins
     const uniOwner = isUniAdmin(req.user.role) ? (body.universityOwnerId ?? null) : null;
 
+    // University admins can create societies that are automatically approved
+    // Society admins and students create societies that need approval (pending)
+    const status = isUniAdmin(req.user.role) ? 'approved' : 'pending';
+
     try {
       const saved = await prisma.society.create({
         data: {
@@ -256,6 +264,7 @@ router.post('/societies', requireAuth, async (req, res, next) => {
           ...(hasSocietyCampus ? { campus: body?.campus ?? null } : {}),
           created_by: req.user.uid,
           university_owner: uniOwner,
+          status: status,
         },
       });
 
@@ -264,6 +273,7 @@ router.post('/societies', requireAuth, async (req, res, next) => {
         name: saved.society_name,
         createdAt: saved.created_at,
         campus: hasSocietyCampus ? (saved.campus ?? null) : null,
+        status: saved.status,
       });
     } catch (e) {
       // unique name
@@ -294,6 +304,8 @@ router.post('/societies', requireAuth, async (req, res, next) => {
  */
 router.get('/societies/my-society', requireAuth, async (req, res, next) => {
   try {
+    console.log('GET /societies/my-society - User ID:', req.user.uid, 'Role:', req.user.role);
+
     // Only society admins can access this endpoint
     if (req.user.role !== 'society_admin') {
       return res.status(403).json({ message: 'Only society admins can access this endpoint' });
@@ -313,6 +325,8 @@ router.get('/societies/my-society', requireAuth, async (req, res, next) => {
       }
     });
 
+    console.log('Found society:', society ? String(society.society_id) : 'null');
+
     if (!society) {
       return res.status(404).json({ message: 'No society found for this admin' });
     }
@@ -327,6 +341,54 @@ router.get('/societies/my-society', requireAuth, async (req, res, next) => {
       createdAt: society.created_at,
       updatedAt: society.updated_at,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/societies/my-pending - Get pending societies created by the current user
+/**
+ * @openapi
+ * /api/societies/my-pending:
+ *   get:
+ *     tags: [Societies]
+ *     summary: Get pending societies created by the current user
+ *     security: [ { bearerAuth: [] } ]
+ *     responses:
+ *       200:
+ *         description: List of pending societies
+ */
+router.get('/societies/my-pending', requireAuth, async (req, res, next) => {
+  try {
+    // Find societies created by this user with pending status
+    const societies = await prisma.society.findMany({
+      where: {
+        created_by: req.user.uid,
+        status: 'pending',
+      },
+      orderBy: { created_at: 'desc' },
+      select: {
+        society_id: true,
+        society_name: true,
+        description: true,
+        category: true,
+        campus: true,
+        status: true,
+        created_at: true,
+      },
+    });
+
+    const data = societies.map(s => ({
+      societyId: String(s.society_id),
+      name: s.society_name,
+      description: s.description ?? null,
+      category: s.category ?? null,
+      campus: s.campus ?? null,
+      status: s.status,
+      createdAt: s.created_at,
+    }));
+
+    res.json({ data, total: data.length });
   } catch (err) {
     next(err);
   }
@@ -380,7 +442,7 @@ router.put('/societies/:society_id/assign-admin', requireAuth, async (req, res, 
       return res.status(400).json({ message: 'adminUserId is required' });
     }
 
-    // Verify the user exists and is a society_admin
+    // Verify the user exists
     const user = await prisma.app_user.findUnique({
       where: { user_id: adminUserId },
       select: { role: true, first_name: true, last_name: true }
@@ -390,8 +452,12 @@ router.put('/societies/:society_id/assign-admin', requireAuth, async (req, res, 
       return res.status(404).json({ message: 'User not found' });
     }
 
-    if (user.role !== 'society_admin') {
-      return res.status(400).json({ message: 'User must have society_admin role' });
+    // If user is a student, promote them to society_admin
+    if (user.role === 'student') {
+      await prisma.app_user.update({
+        where: { user_id: adminUserId },
+        data: { role: 'society_admin' }
+      });
     }
 
     // Update the society with the new admin
@@ -442,6 +508,9 @@ router.get('/societies/:society_id', async (req, res, next) => {
         updated_at: true,
         ...(hasSocietyCampus ? { campus: true } : {}),
         app_user_society_created_byToapp_user: { select: { first_name: true, last_name: true, campus: true } },
+        membership: {
+          where: { status: 'active' },
+        },
         _count: { select: { membership: true, event: true, post: true } },
       },
     });
@@ -481,7 +550,7 @@ router.get('/societies/:society_id', async (req, res, next) => {
         campus:    creatorCampus,
       },
       counts: {
-        members: s._count.membership,
+        members: s.membership.length,
         events:  s._count.event,
         posts:   s._count.post,
       },
@@ -584,6 +653,169 @@ router.delete('/societies/:society_id', requireAuth, async (req, res, next) => {
     res.status(204).send();
   } catch (err) {
     if (err?.code === 'P2025') return res.status(404).json({ message: 'Not found' });
+    next(err);
+  }
+});
+
+// POST /api/societies/:society_id/approve - Approve a pending society (university_admin only)
+/**
+ * @openapi
+ * /api/societies/{society_id}/approve:
+ *   post:
+ *     tags: [Societies]
+ *     summary: Approve a pending society (university_admin only)
+ *     security: [ { bearerAuth: [] } ]
+ *     parameters:
+ *       - in: path
+ *         name: society_id
+ *         required: true
+ *         schema: { type: string, pattern: "^[0-9]+$" }
+ *     responses:
+ *       200:
+ *         description: Society approved successfully
+ *       403:
+ *         description: Only university admins can approve societies
+ *       404:
+ *         description: Society not found
+ *       400:
+ *         description: Society is not in pending status
+ */
+router.post('/societies/:society_id/approve', requireAuth, async (req, res, next) => {
+  try {
+    // Only university admins can approve societies
+    if (!isUniAdmin(req.user.role)) {
+      return res.status(403).json({ message: 'Only university admins can approve societies' });
+    }
+
+    const { society_id } = req.params;
+    if (!/^\d+$/.test(society_id)) {
+      return res.status(400).json({ message: 'Invalid society_id' });
+    }
+
+    const id = BigInt(society_id);
+
+    // Check if society exists and is pending
+    const existing = await prisma.society.findUnique({
+      where: { society_id: id },
+      select: { status: true, society_name: true, created_by: true },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ message: 'Society not found' });
+    }
+
+    if (existing.status !== 'pending') {
+      return res.status(400).json({
+        message: `Society is already ${existing.status}`,
+        currentStatus: existing.status
+      });
+    }
+
+    // Update status to approved and assign the creator as society admin
+    const updated = await prisma.society.update({
+      where: { society_id: id },
+      data: {
+        status: 'approved',
+        society_admin_id: existing.created_by, // Assign creator as admin
+        updated_at: new Date()
+      },
+      select: {
+        society_id: true,
+        society_name: true,
+        status: true,
+        updated_at: true,
+      },
+    });
+
+    res.json({
+      message: 'Society approved successfully',
+      societyId: String(updated.society_id),
+      name: updated.society_name,
+      status: updated.status,
+      updatedAt: updated.updated_at,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/societies/:society_id/reject - Reject a pending society (university_admin only)
+/**
+ * @openapi
+ * /api/societies/{society_id}/reject:
+ *   post:
+ *     tags: [Societies]
+ *     summary: Reject a pending society (university_admin only)
+ *     security: [ { bearerAuth: [] } ]
+ *     parameters:
+ *       - in: path
+ *         name: society_id
+ *         required: true
+ *         schema: { type: string, pattern: "^[0-9]+$" }
+ *     responses:
+ *       200:
+ *         description: Society rejected successfully
+ *       403:
+ *         description: Only university admins can reject societies
+ *       404:
+ *         description: Society not found
+ *       400:
+ *         description: Society is not in pending status
+ */
+router.post('/societies/:society_id/reject', requireAuth, async (req, res, next) => {
+  try {
+    // Only university admins can reject societies
+    if (!isUniAdmin(req.user.role)) {
+      return res.status(403).json({ message: 'Only university admins can reject societies' });
+    }
+
+    const { society_id } = req.params;
+    if (!/^\d+$/.test(society_id)) {
+      return res.status(400).json({ message: 'Invalid society_id' });
+    }
+
+    const id = BigInt(society_id);
+
+    // Check if society exists and is pending
+    const existing = await prisma.society.findUnique({
+      where: { society_id: id },
+      select: { status: true, society_name: true },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ message: 'Society not found' });
+    }
+
+    if (existing.status !== 'pending') {
+      return res.status(400).json({
+        message: `Society is already ${existing.status}`,
+        currentStatus: existing.status
+      });
+    }
+
+    // Update status to rejected
+    const updated = await prisma.society.update({
+      where: { society_id: id },
+      data: {
+        status: 'rejected',
+        updated_at: new Date()
+      },
+      select: {
+        society_id: true,
+        society_name: true,
+        status: true,
+        updated_at: true,
+      },
+    });
+
+    res.json({
+      message: 'Society rejected successfully',
+      societyId: String(updated.society_id),
+      name: updated.society_name,
+      status: updated.status,
+      updatedAt: updated.updated_at,
+    });
+  } catch (err) {
     next(err);
   }
 });

@@ -74,7 +74,7 @@ const userSelect = {
 function shapeUserRow(user) {
   const memberships = user.student_profile?.membership ?? [];
   const societies = memberships.map((membership) => ({
-    societyId: String(membership.society_id),
+    societyId: String(membership.society?.society_id ?? membership.society_id),
     name: membership.society?.society_name ?? 'Unknown',
     status: membership.status,
   }));
@@ -115,14 +115,16 @@ router.get('/admin/stats', requireAuth, async (req, res, next) => {
   try {
     if (!isUniAdmin(req.user.role)) return res.status(403).json({ message: 'Forbidden' });
 
-    const [users, societies, events, rsvps] = await Promise.all([
+    const [users, societies, events, rsvps, posts, memberships] = await Promise.all([
       prisma.app_user.count(),
       prisma.society.count(),
       prisma.event.count(),
       prisma.event_rsvp.count(),
+      prisma.post.count(),
+      prisma.membership.count({ where: { status: 'active' } }),
     ]);
 
-    res.json({ users, societies, events, rsvps });
+    res.json({ users, societies, events, rsvps, posts, memberships });
   } catch (e) {
     next(e);
   }
@@ -130,6 +132,7 @@ router.get('/admin/stats', requireAuth, async (req, res, next) => {
 
 router.get('/admin/users', requireAuth, async (req, res, next) => {
   try {
+    console.log('GET /admin/users - User:', req.user?.role, 'Query:', req.query);
     if (!isUniAdmin(req.user.role)) return res.status(403).json({ message: 'Forbidden' });
 
     const filters = listUsersSchema.parse(req.query);
@@ -245,6 +248,159 @@ router.delete('/admin/users/:user_id', requireAuth, async (req, res, next) => {
     res.status(204).send();
   } catch (err) {
     if (err?.code === 'P2025') return res.status(404).json({ message: 'User not found' });
+    next(err);
+  }
+});
+
+// GET /admin/societies - Fetch all societies (including pending/rejected)
+router.get('/admin/societies', requireAuth, async (req, res, next) => {
+  try {
+    if (!isUniAdmin(req.user.role)) return res.status(403).json({ message: 'Forbidden' });
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const status = req.query.status; // pending, approved, rejected
+    const campus = req.query.campus; // campus filter
+    const q = req.query.q || '';
+
+    const where = {};
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (campus) {
+      where.campus = campus;
+    }
+
+    if (q) {
+      where.OR = [
+        { society_name: { contains: q, mode: 'insensitive' } },
+        { description: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [total, societies] = await Promise.all([
+      prisma.society.count({ where }),
+      prisma.society.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: limit,
+        select: {
+          society_id: true,
+          society_name: true,
+          category: true,
+          description: true,
+          status: true,
+          created_at: true,
+          updated_at: true,
+          campus: true,
+          _count: {
+            select: {
+              membership: { where: { status: 'active' } },
+            },
+          },
+        },
+      }),
+    ]);
+
+    const data = societies.map((s) => ({
+      societyId: String(s.society_id),
+      name: s.society_name,
+      category: s.category,
+      description: s.description,
+      status: s.status,
+      createdAt: s.created_at,
+      updatedAt: s.updated_at,
+      campus: s.campus,
+      memberCount: s._count.membership,
+    }));
+
+    res.json({ data, total, page, limit });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /admin/posts - Fetch all posts across all societies
+router.get('/admin/posts', requireAuth, async (req, res, next) => {
+  try {
+    if (!isUniAdmin(req.user.role)) return res.status(403).json({ message: 'Forbidden' });
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const q = req.query.q || '';
+    const campus = req.query.campus;
+
+    const where = {};
+
+    if (q) {
+      where.content = { contains: q, mode: 'insensitive' };
+    }
+
+    if (campus) {
+      where.society = {
+        campus: campus,
+      };
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [total, posts] = await Promise.all([
+      prisma.post.count({ where }),
+      prisma.post.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: limit,
+        include: {
+          app_user: {
+            select: {
+              user_id: true,
+              first_name: true,
+              last_name: true,
+              university_number: true,
+            },
+          },
+          society: {
+            select: {
+              society_id: true,
+              society_name: true,
+              category: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const data = posts.map((p) => ({
+      id: String(p.post_id),
+      societyId: String(p.society_id),
+      content: p.content,
+      imageUrl: p.image_url,
+      createdAt: p.created_at,
+      author: p.app_user
+        ? {
+            id: p.app_user.user_id,
+            firstName: p.app_user.first_name,
+            lastName: p.app_user.last_name,
+            universityNumber: p.app_user.university_number,
+          }
+        : null,
+      society: p.society
+        ? {
+            societyId: String(p.society.society_id),
+            name: p.society.society_name,
+            category: p.society.category,
+          }
+        : null,
+    }));
+
+    res.json({ data, total, page, limit });
+  } catch (err) {
     next(err);
   }
 });

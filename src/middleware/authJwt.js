@@ -71,11 +71,21 @@ export async function canManageSociety(req, res, next) {
   if (user.role === 'society_admin') {
     const society = await prisma.society.findUnique({
       where: { society_id: societyId },
-      select: { created_by: true }
+      select: { created_by: true, society_admin_id: true, society_id: true }
+    });
+
+    console.log('canManageSociety check:', {
+      userId: user.id,
+      societyId,
+      createdBy: society?.created_by,
+      adminId: society?.society_admin_id,
+      isCreator: society?.created_by === user.id,
+      isAdmin: society?.society_admin_id === user.id
     });
 
     if (!society) return res.status(404).json({ message: 'Society not found' });
-    if (society.created_by === user.id) return next();
+    // Allow if user is creator OR assigned as society admin
+    if (society.created_by === user.id || society.society_admin_id === user.id) return next();
   }
 
   return res.status(403).json({ message: 'Forbidden: Not authorized for this society' });
