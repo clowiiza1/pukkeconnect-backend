@@ -198,6 +198,81 @@ function isPlatformAdmin(role) {
 
 // ---------- Routes ----------
 
+// GET /api/posts/feed (student's feed from all joined societies)
+router.get('/posts/feed', requireAuth, async (req, res, next) => {
+  try {
+    console.log('📰 GET /posts/feed - User:', req.user?.uid);
+    const page = Math.max(1, parseInt(String(req.query.page ?? '1'), 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit ?? '20'), 10) || 20));
+    const skip = (page - 1) * limit;
+
+    // Get societies the student is an active member of
+    const memberships = await prisma.membership.findMany({
+      where: {
+        student_id: req.user.uid,
+        status: 'active',
+      },
+      select: { society_id: true },
+    });
+
+    console.log('📰 Found memberships:', memberships.length);
+    const societyIds = memberships.map((m) => m.society_id);
+
+    if (societyIds.length === 0) {
+      console.log('📰 No active memberships, returning empty feed');
+      return res.json({ data: [], page, limit, total: 0 });
+    }
+
+    console.log('📰 Fetching posts from societies:', societyIds);
+    const [total, rows] = await Promise.all([
+      prisma.post.count({ where: { society_id: { in: societyIds } } }),
+      prisma.post.findMany({
+        where: { society_id: { in: societyIds } },
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: limit,
+        include: {
+          _count: { select: { post_like: true } },
+          post_like: {
+            where: { student_id: req.user.uid },
+            select: { student_id: true },
+          },
+          app_user: {
+            select: {
+              user_id: true,
+              first_name: true,
+              last_name: true,
+              university_number: true,
+            },
+          },
+          society: {
+            select: {
+              society_id: true,
+              society_name: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    console.log('📰 Found posts:', rows.length, 'Total:', total);
+    const data = rows.map((p) => ({
+      ...toPostDTO(p, req.user.uid),
+      society: p.society
+        ? {
+            societyId: String(p.society.society_id),
+            name: p.society.society_name,
+          }
+        : null,
+    }));
+
+    res.json({ data, page, limit, total });
+  } catch (err) {
+    console.error('📰 ERROR in /posts/feed:', err);
+    next(err);
+  }
+});
+
 // GET /api/societies/:society_id/posts (feed)
 router.get('/societies/:society_id/posts', requireAuth, async (req, res, next) => {
   try {
