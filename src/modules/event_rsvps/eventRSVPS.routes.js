@@ -130,11 +130,29 @@ router.post('/events/:event_id/rsvp', requireAuth, async (req, res, next) => {
     const body = rsvpSchema.parse(req.body);
 
     // Ensure event exists (avoid generic FK 500s)
-    const exists = await prisma.event.findUnique({
+    const eventRecord = await prisma.event.findUnique({
       where: { event_id: eventId },
-      select: { event_id: true },
+      select: { event_id: true, society_id: true, deleted_at: true },
     });
-    if (!exists) return res.status(404).json({ message: 'Event not found' });
+    if (!eventRecord || eventRecord.deleted_at) {
+      return res.status(404).json({ message: 'Event not found' });
+    }
+
+    if (!isAdmin(req.user.role)) {
+      const membership = await prisma.membership.findUnique({
+        where: {
+          student_id_society_id: {
+            student_id: req.user.uid,
+            society_id: eventRecord.society_id,
+          },
+        },
+        select: { status: true },
+      });
+
+      if (membership?.status !== 'active') {
+        return res.status(403).json({ message: 'You need an active membership to RSVP for this event' });
+      }
+    }
 
     const saved = await prisma.event_rsvp.upsert({
       where: { student_id_event_id: { student_id: req.user.uid, event_id: eventId } },
