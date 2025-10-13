@@ -143,7 +143,7 @@ const updateEventSchema = createEventSchema.partial();
 // ---------- Routes ----------
 
 // GET /api/events (feed + filters)
-router.get('/events', async (req, res, next) => {
+router.get('/events', requireAuth, async (req, res, next) => {
   try {
     const { society_id, campus, starts_after, starts_before } = req.query;
 
@@ -155,8 +155,43 @@ router.get('/events', async (req, res, next) => {
       deleted_at: null, // soft-delete filter
     };
 
-    if (society_id && /^\d+$/.test(String(society_id))) {
-      where.society_id = BigInt(String(society_id));
+    let requestedSocietyId = null;
+    if (society_id !== undefined) {
+      if (!/^\d+$/.test(String(society_id))) {
+        return res.status(400).json({ message: 'Invalid society_id' });
+      }
+      requestedSocietyId = BigInt(String(society_id));
+    }
+
+    const privileged = isAdmin(req.user.role);
+    let allowedSocietyIds = null;
+
+    if (!privileged) {
+      const memberships = await prisma.membership.findMany({
+        where: {
+          student_id: req.user.uid,
+          status: 'active',
+        },
+        select: { society_id: true },
+      });
+
+      allowedSocietyIds = memberships.map((m) => m.society_id);
+
+      if (allowedSocietyIds.length === 0) {
+        return res.json({ data: [], page, limit, total: 0 });
+      }
+    }
+
+    if (requestedSocietyId) {
+      if (!privileged) {
+        const hasAccess = allowedSocietyIds.some((id) => id === requestedSocietyId);
+        if (!hasAccess) {
+          return res.status(403).json({ message: 'You need an active membership to view these events' });
+        }
+      }
+      where.society_id = requestedSocietyId;
+    } else if (!privileged) {
+      where.society_id = { in: allowedSocietyIds };
     }
 
     // Campus via event.society.created_by user's campus
