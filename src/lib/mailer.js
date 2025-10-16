@@ -40,15 +40,33 @@ function getMailjetClient() {
   return mailjetClient;
 }
 
+function normalizeAddress(address) {
+  if (!address) return '';
+  let value = String(address).trim();
+  let changed = true;
+  while (changed && value.length > 1) {
+    changed = false;
+    const first = value[0];
+    const last = value[value.length - 1];
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+      value = value.slice(1, -1).trim();
+      changed = true;
+    }
+  }
+  return value;
+}
+
 function parseAddress(address) {
   if (!address) return { name: '', email: '' };
-  const match = address.match(/^(.*)<(.+)>$/);
+  const cleaned = normalizeAddress(address);
+
+  const match = cleaned.match(/^(.*)<(.+)>$/);
   if (match) {
-    const name = match[1].trim().replace(/^"|"$/g, '');
-    const email = match[2].trim();
+    const name = normalizeAddress(match[1]);
+    const email = normalizeAddress(match[2]);
     return { name, email };
   }
-  return { name: '', email: address.trim() };
+  return { name: '', email: cleaned };
 }
 
 export async function sendPasswordResetEmail({ to, link }) {
