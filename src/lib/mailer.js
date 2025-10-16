@@ -1,11 +1,14 @@
 import nodemailer from 'nodemailer';
+import Mailjet from 'node-mailjet';
 import { env } from '../config.js';
 
-const emailConfigured = Boolean(env.smtp.host && env.smtp.user && env.smtp.pass);
+const smtpConfigured = Boolean(env.smtp.host && env.smtp.user && env.smtp.pass);
+const mailjetConfigured = Boolean(env.mailjet.apiKey && env.mailjet.apiSecret && env.mailjet.from);
 let transporter;
+let mailjetClient;
 
 async function getTransporter() {
-  if (!emailConfigured) return null;
+  if (!smtpConfigured) return null;
   if (!transporter) {
     transporter = nodemailer.createTransport({
       host: env.smtp.host,
@@ -29,11 +32,29 @@ async function getTransporter() {
   return transporter;
 }
 
+function getMailjetClient() {
+  if (!mailjetConfigured) return null;
+  if (!mailjetClient) {
+    mailjetClient = Mailjet.apiConnect(env.mailjet.apiKey, env.mailjet.apiSecret);
+  }
+  return mailjetClient;
+}
+
+function parseAddress(address) {
+  if (!address) return { name: '', email: '' };
+  const match = address.match(/^(.*)<(.+)>$/);
+  if (match) {
+    const name = match[1].trim().replace(/^"|"$/g, '');
+    const email = match[2].trim();
+    return { name, email };
+  }
+  return { name: '', email: address.trim() };
+}
+
 export async function sendPasswordResetEmail({ to, link }) {
-  const transport = await getTransporter();
   const composed = {
     to,
-    from: env.smtp.from || env.smtp.user || 'no-reply@pukkeconnect.dev',
+    from: env.mailjet.from || env.smtp.from || env.smtp.user || 'no-reply@pukkeconnect.dev',
     subject: 'Reset your PukkeConnect password',
     text: `We received a request to reset your PukkeConnect password.\n\nUse the link below to set a new password. This link expires in ${env.resetTokenTtlMinutes} minutes.\n\n${link}\n\nIf you did not request a password reset you can ignore this email.`,
     html: `
@@ -43,10 +64,48 @@ export async function sendPasswordResetEmail({ to, link }) {
     `,
   };
 
-  if (!transport) {
-    console.info('[mailer] Password reset email (SMTP disabled):', composed);
+  const mailjet = getMailjetClient();
+  if (mailjet) {
+    try {
+      const { name: fromName, email: fromEmail } = parseAddress(composed.from);
+      const toAddress = parseAddress(to);
+
+      const response = await mailjet
+        .post('send', { version: 'v3.1' })
+        .request({
+          Messages: [
+            {
+              From: {
+                Email: fromEmail || env.mailjet.from,
+                ...(fromName ? { Name: fromName } : {}),
+              },
+              To: [
+                {
+                  Email: toAddress.email || to,
+                  ...(toAddress.name ? { Name: toAddress.name } : {}),
+                },
+              ],
+              Subject: composed.subject,
+              TextPart: composed.text,
+              HTMLPart: composed.html,
+            },
+          ],
+        });
+
+      const status = response?.body?.Messages?.[0]?.Status;
+      if (status === 'success') return;
+
+      console.error('[mailer] Mailjet send did not report success, attempting SMTP fallback', response?.body);
+    } catch (err) {
+      console.error('[mailer] Mailjet send failed, attempting SMTP fallback', err);
+    }
+  }
+
+  const transport = await getTransporter();
+  if (transport) {
+    await transport.sendMail(composed);
     return;
   }
 
-  await transport.sendMail(composed);
+  console.info('[mailer] Password reset email (no provider configured):', composed);
 }

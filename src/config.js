@@ -19,6 +19,11 @@ export const env = {
   trustProxy: process.env.TRUST_PROXY === 'true',
   resetTokenTtlMinutes: parsePositiveNumber(process.env.RESET_TOKEN_TTL_MINUTES, 30),
   frontendResetUrl: process.env.FRONTEND_RESET_URL || 'http://localhost:5173/reset-password',
+  mailjet: {
+    apiKey: process.env.MAILJET_API_KEY || '',
+    apiSecret: process.env.MAILJET_API_SECRET || '',
+    from: process.env.MAILJET_FROM || '',
+  },
   smtp: {
     host: process.env.SMTP_HOST || '',
     port: parseNumber(process.env.SMTP_PORT, 587),
