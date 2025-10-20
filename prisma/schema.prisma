@@ -287,6 +287,7 @@ model society {
   description                                 String?
   category                                    String?                 @db.VarChar(100)
   campus                                      campus_type?
+  logo_storage_key                            String?                 @db.VarChar(512)
   created_by                                  String                  @db.Uuid
   university_owner                            String?                 @db.Uuid
   society_admin_id                            String?                 @db.Uuid
