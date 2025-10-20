@@ -7,12 +7,21 @@ const prisma = new PrismaClient();
 const router = Router();
 
 // ---------- Validation ----------
+const mediaItemSchema = z.object({
+  key: z.string().min(1).max(512),
+  contentType: z.string().min(1).max(120).optional(),
+  size: z.number().int().nonnegative().optional(),
+  position: z.number().int().min(0).optional(),
+});
+
 const createPostSchema = z.object({
   content: z.string().min(1).max(4000),
+  media: z.array(mediaItemSchema).max(10).optional(),
 });
 
 const updatePostSchema = z.object({
   content: z.string().min(1).max(4000),
+  media: z.array(mediaItemSchema).max(10).optional(),
 });
 
 // ---------- Helpers ----------
@@ -35,7 +44,23 @@ function toPostDTO(p, currentUserId) {
           universityNumber: p.app_user.university_number,
         }
       : null,
+    media: (p.post_media ?? []).map(media => ({
+      key: media.storage_key,
+      contentType: media.content_type,
+      size: media.size_bytes,
+      position: media.position,
+    })),
   };
+}
+
+function normalizeMediaForCreate(media) {
+  if (!Array.isArray(media) || media.length === 0) return [];
+  return media.map((item, index) => ({
+    storage_key: item.key,
+    content_type: item.contentType ?? null,
+    size_bytes: item.size ?? null,
+    position: item.position ?? index,
+  }));
 }
 
 async function isActiveMember(studentId, societyIdBigInt) {
@@ -71,6 +96,15 @@ function isPlatformAdmin(role) {
  *         updatedAt:  { type: string, format: date-time }
  *         likeCount:  { type: integer, example: 7 }
  *         likedByMe:  { type: boolean, example: true }
+ *         media:
+ *           type: array
+ *           items:
+ *             type: object
+ *             properties:
+ *               key:         { type: string }
+ *               contentType: { type: string }
+ *               size:        { type: integer }
+ *               position:    { type: integer }
  *         author:
  *           type: object
  *           nullable: true
@@ -84,6 +118,17 @@ function isPlatformAdmin(role) {
  *       required: [content]
  *       properties:
  *         content: { type: string, example: "Welcome to our kickoff meeting tonight at 18:00!" }
+ *         media:
+ *           type: array
+ *           maxItems: 10
+ *           items:
+ *             type: object
+ *             required: [key]
+ *             properties:
+ *               key:         { type: string, example: "posts/1234-uuid.jpg" }
+ *               contentType: { type: string, example: "image/jpeg" }
+ *               size:        { type: integer, example: 204800 }
+ *               position:    { type: integer, example: 0 }
  *
  * /api/societies/{society_id}/posts:
  *   get:
@@ -237,6 +282,9 @@ router.get('/posts/feed', requireAuth, async (req, res, next) => {
             where: { student_id: req.user.uid },
             select: { student_id: true },
           },
+          post_media: {
+            orderBy: { position: 'asc' },
+          },
           app_user: {
             select: {
               user_id: true,
@@ -298,6 +346,9 @@ router.get('/societies/:society_id/posts', requireAuth, async (req, res, next) =
             where: { student_id: req.user.uid },
             select: { student_id: true },
           },
+          post_media: {
+            orderBy: { position: 'asc' },
+          },
           app_user: {
             select: {
               user_id: true,
@@ -332,17 +383,27 @@ router.post('/societies/:society_id/posts', requireAuth, async (req, res, next) 
 
     if (!allowed) return res.status(403).json({ message: 'Forbidden: not a member/admin' });
 
+    const mediaData = normalizeMediaForCreate(body.media);
+
     const created = await prisma.post.create({
       data: {
         society_id: societyId,
         author_id: req.user.uid,
         content: body.content,
+        post_media: mediaData.length
+          ? {
+              create: mediaData,
+            }
+          : undefined,
       },
       include: {
         _count: { select: { post_like: true } },
         post_like: {
           where: { student_id: req.user.uid },
           select: { student_id: true },
+        },
+        post_media: {
+          orderBy: { position: 'asc' },
         },
         app_user: {
           select: {
@@ -378,6 +439,9 @@ router.get('/posts/:post_id', requireAuth, async (req, res, next) => {
         post_like: {
           where: { student_id: req.user.uid },
           select: { student_id: true },
+        },
+        post_media: {
+          orderBy: { position: 'asc' },
         },
         app_user: {
           select: {
@@ -416,17 +480,32 @@ router.put('/posts/:post_id', requireAuth, async (req, res, next) => {
 
     if (!canEdit) return res.status(403).json({ message: 'Forbidden' });
 
+    const mediaData = normalizeMediaForCreate(body.media);
+    const mediaOperations =
+      body.media !== undefined
+        ? {
+            post_media: {
+              deleteMany: {},
+              ...(mediaData.length ? { create: mediaData } : {}),
+            },
+          }
+        : {};
+
     const saved = await prisma.post.update({
       where: { post_id: postId },
       data: {
         content: body.content,
         updated_at: new Date(),
+        ...mediaOperations,
       },
       include: {
         _count: { select: { post_like: true } },
         post_like: {
           where: { student_id: req.user.uid },
           select: { student_id: true },
+        },
+        post_media: {
+          orderBy: { position: 'asc' },
         },
         app_user: {
           select: {
