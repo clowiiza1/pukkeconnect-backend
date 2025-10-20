@@ -22,6 +22,12 @@ const listSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+const mediaReferenceSchema = z.object({
+  key: z.string().min(1).max(512),
+  contentType: z.string().min(1).max(120).optional(),
+  size: z.number().int().nonnegative().optional(),
+});
+
 const createSchema = z.object({
   name: z.string().min(2).max(150),
   description: z.string().max(4000).optional(),
@@ -29,9 +35,16 @@ const createSchema = z.object({
   campus: campusInputSchema,
   // optionally allow assigning a university owner (admin-only field, ignored for students)
   universityOwnerId: z.string().uuid().optional(),
+  logo: mediaReferenceSchema.nullish(),
 });
 
 const updateSchema = createSchema.partial();
+
+const extractLogoKey = (logo) => {
+  if (!logo) return null;
+  const key = typeof logo.key === 'string' ? logo.key.trim() : '';
+  return key ? key : null;
+};
 
 // ---------- OpenAPI ----------
 /**
@@ -188,13 +201,14 @@ router.get('/societies', async (req, res, next) => {
 
     const skip = (q.page - 1) * q.limit;
 
-    const baseSelect = {
-      society_id: true,
-      society_name: true,
-      category: true,
-      description: true,
-      created_at: true,
-      updated_at: true,
+  const baseSelect = {
+    society_id: true,
+    society_name: true,
+    category: true,
+    description: true,
+    logo_storage_key: true,
+    created_at: true,
+    updated_at: true,
       ...(hasSocietyCampus ? { campus: true } : {}),
       app_user_society_created_byToapp_user: {
         select: { first_name: true, last_name: true, campus: true },
@@ -216,11 +230,12 @@ router.get('/societies', async (req, res, next) => {
       }),
     ]);
 
-    const data = rows.map(s => ({
-      societyId: String(s.society_id),
-      name: s.society_name,
-      category: s.category ?? null,
-      description: s.description ?? null,
+  const data = rows.map(s => ({
+    societyId: String(s.society_id),
+    name: s.society_name,
+    category: s.category ?? null,
+    description: s.description ?? null,
+    logo: s.logo_storage_key ? { key: s.logo_storage_key } : null,
       createdAt: s.created_at,
       campus: hasSocietyCampus
         ? (s.campus ?? s.app_user_society_created_byToapp_user.campus ?? null)
@@ -250,6 +265,7 @@ router.post('/societies', requireAuth, async (req, res, next) => {
 
     // Any authenticated user may create; universityOwnerId only honored for admins
     const uniOwner = isUniAdmin(req.user.role) ? (body.universityOwnerId ?? null) : null;
+    const logoKey = extractLogoKey(body.logo);
 
     // University admins can create societies that are automatically approved
     // Society admins and students create societies that need approval (pending)
@@ -262,6 +278,7 @@ router.post('/societies', requireAuth, async (req, res, next) => {
           description: body.description ?? null,
           category: body.category ?? null,
           ...(hasSocietyCampus ? { campus: body?.campus ?? null } : {}),
+          ...(logoKey ? { logo_storage_key: logoKey } : {}),
           created_by: req.user.uid,
           university_owner: uniOwner,
           status: status,
@@ -274,6 +291,7 @@ router.post('/societies', requireAuth, async (req, res, next) => {
         createdAt: saved.created_at,
         campus: hasSocietyCampus ? (saved.campus ?? null) : null,
         status: saved.status,
+        logo: saved.logo_storage_key ? { key: saved.logo_storage_key } : null,
       });
     } catch (e) {
       // unique name
@@ -322,6 +340,7 @@ router.get('/societies/my-society', requireAuth, async (req, res, next) => {
         campus: true,
         created_at: true,
         updated_at: true,
+        logo_storage_key: true,
       }
     });
 
@@ -340,6 +359,7 @@ router.get('/societies/my-society', requireAuth, async (req, res, next) => {
       campus: society.campus,
       createdAt: society.created_at,
       updatedAt: society.updated_at,
+      logo: society.logo_storage_key ? { key: society.logo_storage_key } : null,
     });
   } catch (err) {
     next(err);
@@ -375,6 +395,7 @@ router.get('/societies/my-pending', requireAuth, async (req, res, next) => {
         campus: true,
         status: true,
         created_at: true,
+        logo_storage_key: true,
       },
     });
 
@@ -386,6 +407,7 @@ router.get('/societies/my-pending', requireAuth, async (req, res, next) => {
       campus: s.campus ?? null,
       status: s.status,
       createdAt: s.created_at,
+      logo: s.logo_storage_key ? { key: s.logo_storage_key } : null,
     }));
 
     res.json({ data, total: data.length });
@@ -504,6 +526,7 @@ router.get('/societies/:society_id', async (req, res, next) => {
         society_name: true,
         category: true,
         description: true,
+        logo_storage_key: true,
         created_at: true,
         updated_at: true,
         ...(hasSocietyCampus ? { campus: true } : {}),
@@ -554,6 +577,7 @@ router.get('/societies/:society_id', async (req, res, next) => {
         events:  s._count.event,
         posts:   s._count.post,
       },
+      logo: s.logo_storage_key ? { key: s.logo_storage_key } : null,
       recentEvents: recentEvents.map(e => ({
         eventId: String(e.event_id), title: e.title, startsAt: e.starts_at, location: e.location ?? null, capacity: e.capacity ?? null,
       })),
@@ -586,23 +610,28 @@ router.put('/societies/:society_id', requireAuth, async (req, res, next) => {
     }
 
     try {
+      const logoKey = body.logo === undefined ? undefined : extractLogoKey(body.logo);
+      const updateData = {
+        ...(body.name !== undefined ? { society_name: body.name } : {}),
+        ...(body.description !== undefined ? { description: body.description ?? null } : {}),
+        ...(body.category !== undefined ? { category: body.category ?? null } : {}),
+        ...(body.campus !== undefined && hasSocietyCampus ? { campus: body.campus ?? null } : {}),
+        ...(body.universityOwnerId !== undefined && isUniAdmin(req.user.role)
+            ? { university_owner: body.universityOwnerId ?? null } : {}),
+        ...(logoKey !== undefined ? { logo_storage_key: logoKey } : {}),
+        updated_at: new Date(),
+      };
+
       const updated = await prisma.society.update({
         where: { society_id: id },
-        data: {
-          ...(body.name !== undefined ? { society_name: body.name } : {}),
-          ...(body.description !== undefined ? { description: body.description ?? null } : {}),
-          ...(body.category !== undefined ? { category: body.category ?? null } : {}),
-          ...(body.campus !== undefined && hasSocietyCampus ? { campus: body.campus ?? null } : {}),
-          ...(body.universityOwnerId !== undefined && isUniAdmin(req.user.role)
-              ? { university_owner: body.universityOwnerId ?? null } : {}),
-          updated_at: new Date(),
-        },
+        data: updateData,
         select: {
           society_id: true,
           society_name: true,
           category: true,
           description: true,
           updated_at: true,
+          logo_storage_key: true,
           ...(hasSocietyCampus ? { campus: true } : {}),
         },
       });
@@ -614,6 +643,7 @@ router.put('/societies/:society_id', requireAuth, async (req, res, next) => {
         description: updated.description ?? null,
         updatedAt: updated.updated_at,
         campus: hasSocietyCampus ? (updated.campus ?? null) : null,
+        logo: updated.logo_storage_key ? { key: updated.logo_storage_key } : null,
       });
     } catch (e) {
       if (e?.code === 'P2002') return res.status(409).json({ message: 'Society name already exists' });

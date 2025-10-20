@@ -143,6 +143,14 @@ router.get('/uploads/presign-download', requireAuth, async (req, res, next) => {
         if (!allowed) return res.status(403).json({ message: 'Forbidden' });
         break;
       }
+      case 'societies': {
+        const society = await prisma.society.findFirst({
+          where: { logo_storage_key: key },
+          select: { society_id: true },
+        });
+        if (!society) return res.status(404).json({ message: 'Media not found' });
+        break;
+      }
       default:
         return res.status(400).json({ message: 'Unsupported key scope' });
     }
