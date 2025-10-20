@@ -26,6 +26,7 @@ import studentMembershipRoutes from './modules/memberships/memberships.student.r
 import eventsRoutes from './modules/events/events.routes.js';
 import societiesRoutes from './modules/societies/societies.routes.js';
 import trackingRoutes from './modules/tracking/tracking.routes.js';
+import uploadsRoutes from './modules/uploads/uploads.routes.js';
 // Swagger
 import { swaggerUi, swaggerSpec } from './docs.swagger.js';
 
@@ -101,6 +102,7 @@ app.use('/api', adminRoutes);
 app.use('/api', societyAdminRoutes);
 app.use('/api', eventRsvpsRoutes);
 app.use('/api', trackingRoutes);
+app.use('/api', uploadsRoutes);
 app.use('/api/societies', membershipsRoutes);
 app.use('/api/memberships', studentMembershipRoutes);
 app.use('/api', societiesRoutes);

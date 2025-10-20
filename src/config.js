@@ -32,4 +32,12 @@ export const env = {
     pass: process.env.SMTP_PASS || '',
     from: process.env.SMTP_FROM || '',
   },
+  aws: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
+    region: process.env.AWS_REGION || 'eu-central-1',
+    bucket: process.env.S3_BUCKET || '',
+    uploadUrlTtlSeconds: parsePositiveNumber(process.env.UPLOAD_SIGN_URL_TTL_SECONDS, 900),
+    downloadUrlTtlSeconds: parsePositiveNumber(process.env.DOWNLOAD_SIGN_URL_TTL_SECONDS, 120),
+  },
 };
