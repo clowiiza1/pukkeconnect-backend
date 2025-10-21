@@ -9,6 +9,18 @@ const hasSocietyCampus = 'campus' in prisma.society.fields;
 
 const isAdmin = (role) => role === 'society_admin' || role === 'university_admin';
 
+const mediaReferenceSchema = z.object({
+  key: z.string().min(1).max(512),
+  contentType: z.string().min(1).max(120).optional(),
+  size: z.number().int().nonnegative().optional(),
+});
+
+const extractPosterKey = (poster) => {
+  if (!poster) return null;
+  const key = typeof poster.key === 'string' ? poster.key.trim() : '';
+  return key || null;
+};
+
 // ---------- Validation ----------
 const createEventSchema = z.object({
   title: z.string().min(1).max(200),
@@ -17,6 +29,7 @@ const createEventSchema = z.object({
   endsAt: z.string().datetime().optional(),     // ISO string
   location: z.string().max(200).optional(),
   capacity: z.number().int().positive().optional(),
+  poster: mediaReferenceSchema.nullish(),
 });
 
 const updateEventSchema = createEventSchema.partial();
@@ -217,6 +230,20 @@ router.get('/events', requireAuth, async (req, res, next) => {
       if (starts_before) where.starts_at.lte = new Date(String(starts_before));
     }
 
+    const eventInclude = {
+      app_user: { select: { first_name: true, last_name: true, university_number: true } },
+      society: { select: { society_name: true, society_id: true } },
+      _count: { select: { event_like: true, event_rsvp: true } },
+      ...(req.user?.uid
+        ? {
+            event_rsvp: {
+              where: { student_id: req.user.uid },
+              select: { status: true },
+            },
+          }
+        : {}),
+    };
+
     const [total, rows] = await Promise.all([
       prisma.event.count({ where }),
       prisma.event.findMany({
@@ -224,11 +251,7 @@ router.get('/events', requireAuth, async (req, res, next) => {
         orderBy: { starts_at: 'asc' },                // uses idx_event_society_time
         skip,
         take: limit,
-        include: {
-          app_user: { select: { first_name: true, last_name: true, university_number: true } },
-          society:  { select: { society_name: true, society_id: true } },
-          _count:   { select: { event_like: true, event_rsvp: true } },
-        },
+        include: eventInclude,
       }),
     ]);
 
@@ -244,6 +267,12 @@ router.get('/events', requireAuth, async (req, res, next) => {
       capacity: e.capacity ?? null,
       status: e.status,
       createdAt: e.created_at,
+      poster: e.poster_storage_key ? { key: e.poster_storage_key } : null,
+      myRsvp: req.user?.uid
+        ? (Array.isArray(e.event_rsvp) && e.event_rsvp[0]
+            ? { status: e.event_rsvp[0].status }
+            : null)
+        : null,
       createdBy: {
         firstName: e.app_user.first_name,
         lastName: e.app_user.last_name,
@@ -272,6 +301,7 @@ router.post('/societies/:society_id/events', requireAuth, async (req, res, next)
     if (!/^\d+$/.test(society_id)) return res.status(400).json({ message: 'Invalid society_id' });
 
     const body = createEventSchema.parse(req.body);
+    const posterKey = extractPosterKey(body.poster);
 
     const saved = await prisma.event.create({
       data: {
@@ -283,6 +313,7 @@ router.post('/societies/:society_id/events', requireAuth, async (req, res, next)
         location: body.location ?? null,
         capacity: body.capacity ?? null,
         created_by: req.user.uid,
+        poster_storage_key: posterKey,
       },
       include: {
         society: { select: { society_name: true } },
@@ -298,6 +329,7 @@ router.post('/societies/:society_id/events', requireAuth, async (req, res, next)
       endsAt: saved.ends_at,
       location: saved.location ?? null,
       capacity: saved.capacity ?? null,
+      poster: saved.poster_storage_key ? { key: saved.poster_storage_key } : null,
       createdAt: saved.created_at,
       society: { name: saved.society.society_name },
     });
@@ -313,13 +345,23 @@ router.get('/events/:event_id', async (req, res, next) => {
     const { event_id } = req.params;
     if (!/^\d+$/.test(event_id)) return res.status(400).json({ message: 'Invalid event_id' });
 
+    const eventInclude = {
+      app_user: { select: { first_name: true, last_name: true, university_number: true } },
+      society:  { select: { society_name: true, society_id: true } },
+      _count:   { select: { event_like: true, event_rsvp: true } },
+      ...(req.user?.uid
+        ? {
+            event_rsvp: {
+              where: { student_id: req.user.uid },
+              select: { status: true },
+            },
+          }
+        : {}),
+    };
+
     const e = await prisma.event.findUnique({
       where: { event_id: BigInt(event_id) },
-      include: {
-        app_user: { select: { first_name: true, last_name: true, university_number: true } },
-        society:  { select: { society_name: true, society_id: true } },
-        _count:   { select: { event_like: true, event_rsvp: true } },
-      },
+      include: eventInclude,
     });
 
     if (!e || e.deleted_at) return res.status(404).json({ message: 'Not found' });
@@ -336,6 +378,12 @@ router.get('/events/:event_id', async (req, res, next) => {
       status: e.status,
       createdAt: e.created_at,
       updatedAt: e.updated_at,
+      poster: e.poster_storage_key ? { key: e.poster_storage_key } : null,
+      myRsvp: req.user?.uid
+        ? (Array.isArray(e.event_rsvp) && e.event_rsvp[0]
+            ? { status: e.event_rsvp[0].status }
+            : null)
+        : null,
       createdBy: {
         firstName: e.app_user.first_name,
         lastName: e.app_user.last_name,
@@ -360,6 +408,7 @@ router.put('/events/:event_id', requireAuth, async (req, res, next) => {
     if (!/^\d+$/.test(event_id)) return res.status(400).json({ message: 'Invalid event_id' });
 
     const body = updateEventSchema.parse(req.body);
+    const posterKey = body.poster === undefined ? undefined : extractPosterKey(body.poster);
 
     const existing = await prisma.event.findUnique({
       where: { event_id: BigInt(event_id) },
@@ -380,6 +429,7 @@ router.put('/events/:event_id', requireAuth, async (req, res, next) => {
         ...(body.endsAt !== undefined ? { ends_at: body.endsAt ? new Date(body.endsAt) : null } : {}),
         ...(body.location !== undefined ? { location: body.location ?? null } : {}),
         ...(body.capacity !== undefined ? { capacity: body.capacity ?? null } : {}),
+        ...(posterKey !== undefined ? { poster_storage_key: posterKey } : {}),
         updated_at: new Date(),
       },
       include: { society: { select: { society_name: true } } },
@@ -394,6 +444,7 @@ router.put('/events/:event_id', requireAuth, async (req, res, next) => {
       endsAt: updated.ends_at,
       location: updated.location ?? null,
       capacity: updated.capacity ?? null,
+      poster: updated.poster_storage_key ? { key: updated.poster_storage_key } : null,
       updatedAt: updated.updated_at,
       society: { name: updated.society.society_name },
     });

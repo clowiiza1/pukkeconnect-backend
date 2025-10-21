@@ -54,6 +54,7 @@ model event {
   ends_at     DateTime?         @db.Timestamptz(6)
   location    String?           @db.VarChar(200)
   capacity    Int?
+  poster_storage_key String?    @db.VarChar(512)
   created_by  String            @db.Uuid
   created_at  DateTime          @default(now()) @db.Timestamptz(6)
   updated_at  DateTime          @default(now()) @db.Timestamptz(6)
