@@ -541,20 +541,47 @@ router.get('/societies/:society_id', async (req, res, next) => {
     // soft-delete aware (if you added the column)
     if (!s || ('deleted_at' in s && s.deleted_at)) return res.status(404).json({ message: 'Not found' });
 
-    const [recentEvents, recentPosts] = await Promise.all([
-      prisma.event.findMany({
-        where: { society_id: id, deleted_at: null },
-        orderBy: { starts_at: 'asc' },
-        take: recentLimit,
-        select: { event_id: true, title: true, starts_at: true, location: true, capacity: true },
-      }),
-      prisma.post.findMany({
-        where: { society_id: id },
-        orderBy: { created_at: 'desc' },
-        take: recentLimit,
-        select: { post_id: true, content: true, created_at: true },
-      }),
-    ]);
+    const now = new Date();
+    const eventSelect = {
+      event_id: true,
+      title: true,
+      starts_at: true,
+      location: true,
+      capacity: true,
+      poster_storage_key: true,
+    };
+
+    let recentEvents = await prisma.event.findMany({
+      where: {
+        society_id: id,
+        deleted_at: null,
+        starts_at: { gte: now },
+      },
+      orderBy: { starts_at: 'asc' },
+      take: recentLimit,
+      select: eventSelect,
+    });
+
+    if (recentEvents.length < recentLimit) {
+      const pastEvents = await prisma.event.findMany({
+        where: {
+          society_id: id,
+          deleted_at: null,
+          starts_at: { lt: now },
+        },
+        orderBy: { starts_at: 'desc' },
+        take: recentLimit - recentEvents.length,
+        select: eventSelect,
+      });
+      recentEvents = [...recentEvents, ...pastEvents];
+    }
+
+    const recentPosts = await prisma.post.findMany({
+      where: { society_id: id },
+      orderBy: { created_at: 'desc' },
+      take: recentLimit,
+      select: { post_id: true, content: true, created_at: true },
+    });
 
     const creatorCampus = s.app_user_society_created_byToapp_user.campus ?? null;
     const campus = hasSocietyCampus ? (s.campus ?? creatorCampus) : creatorCampus;
@@ -579,7 +606,12 @@ router.get('/societies/:society_id', async (req, res, next) => {
       },
       logo: s.logo_storage_key ? { key: s.logo_storage_key } : null,
       recentEvents: recentEvents.map(e => ({
-        eventId: String(e.event_id), title: e.title, startsAt: e.starts_at, location: e.location ?? null, capacity: e.capacity ?? null,
+        eventId: String(e.event_id),
+        title: e.title,
+        startsAt: e.starts_at,
+        location: e.location ?? null,
+        capacity: e.capacity ?? null,
+        poster: e.poster_storage_key ? { key: e.poster_storage_key } : null,
       })),
       recentPosts: recentPosts.map(p => ({
         postId: String(p.post_id), content: p.content, createdAt: p.created_at,

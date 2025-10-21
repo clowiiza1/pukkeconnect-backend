@@ -151,6 +151,14 @@ router.get('/uploads/presign-download', requireAuth, async (req, res, next) => {
         if (!society) return res.status(404).json({ message: 'Media not found' });
         break;
       }
+      case 'events': {
+        const event = await prisma.event.findFirst({
+          where: { poster_storage_key: key },
+          select: { event_id: true },
+        });
+        if (!event) return res.status(404).json({ message: 'Media not found' });
+        break;
+      }
       default:
         return res.status(400).json({ message: 'Unsupported key scope' });
     }
